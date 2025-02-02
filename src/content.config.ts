@@ -1,16 +1,20 @@
 import { glob } from 'astro/loaders';
 import { defineCollection, z } from 'astro:content';
 
+/*
+	Previously tried to expose dayjs via z.string().transform() and z.instanceof().
+	Even though the Astro docs show transform working just fine, no such luck, and an error occurs.
+	Error also occurs with instanceof.
+
+	As such, we'll pass around Dates and convert to dayjs where necessary.
+*/
+
 const blog = defineCollection({
-	// Load Markdown and MDX files in the `src/content/blog/` directory.
 	loader: glob({ base: './src/content/blog', pattern: '**/*.{md,mdx}' }),
-	// Type-check frontmatter using a schema
 	schema: ({ image }) => z.object({
 		title: z.string(),
 		description: z.string(),
-		// Transform string to Date object
 		pubDate: z.coerce.date(),
-		updatedDate: z.coerce.date().optional(),
 		cover: image(), // alt text is effectively the description field
 	}),
 });
