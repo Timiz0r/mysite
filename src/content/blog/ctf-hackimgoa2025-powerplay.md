@@ -1,0 +1,8 @@
+---
+title: 'HackIM Goa CTF 2025 - Powerplay'
+description: 'Welcome to our playground for powerful people where you can pump yourself up and get awesome prizes!'
+pubDate: '2025-02-02T09:46:46Z'
+heroImage: '/ctf/hackimgoa2025/powerplay/header.png'
+---
+
+todo~
