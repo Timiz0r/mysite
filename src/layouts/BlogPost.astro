@@ -70,12 +70,15 @@ const { title, description, pubDate, updatedDate, cover } = Astro.props;
 					<div class="title">
 						<div class="date">
 							<FormattedDate date={pubDate} />
-							{
-								updatedDate && (
-									<div class="last-updated-on">
-										Last updated on <FormattedDate date={updatedDate} />
-									</div>
-								)
+							<!--
+								TODO: add a git hook to populate missing publish times.
+								This code is meant to hide the last updated time if it's close to the publish time.
+								Since publish time is done manually and delays can happen, we have a long 1h grace period
+							-->
+							{ (updatedDate.getTime() - pubDate.getTime()) > (1000 * 60 * 60) &&
+								<div class="last-updated-on">
+									Last updated on <FormattedDate date={updatedDate} />
+								</div>
 							}
 						</div>
 						<h1>{title}</h1>
