@@ -4,22 +4,23 @@ import { SITE_TITLE } from '../consts';
 import { DarkModeToggle } from '@/components/DarkModeToggle';
 ---
 
-<header>
-	<nav>
-		<h2><a href="/">{SITE_TITLE}</a></h2>
-		<div class="internal-links">
+<header class="sticky top-0 z-50 w-full bg-background/50 border-b">
+	<nav class="flex justify-center px-8 h-16 items-center space-x-4 sm:space-x-0">
+		<h2 class="pr-8"><a href="/">{SITE_TITLE}</a></h2>
+		<div class="grow flex justify-center space-x-4">
 			<HeaderLink href="/">Home</HeaderLink>
 			<HeaderLink href="/blog">Blog</HeaderLink>
 			<HeaderLink href="/about">About</HeaderLink>
 		</div>
-		<div class="dark-mode-toggle">
+		<div class="pr-8">
 			<DarkModeToggle client:load />
 		</div>
-		<div class="social-links">
+		<div class="flex space-x-4">
 			<a href="https://www.linkedin.com/in/timothymarro/" target="_blank">
 				<span class="sr-only">LinkedIn</span>
 				<!-- https://github.com/homarr-labs/dashboard-icons/blob/main/svg/linkedin.svg -->
 				<svg xmlns="http://www.w3.org/2000/svg" xml:space="preserve" viewBox="0 0 512 512" width="32" height="32"><path d="M56.9 512h398.2c31.4 0 56.9-25.5 56.9-56.9V56.9C512 25.5 486.5 0 455.1 0H56.9C25.5 0 0 25.5 0 56.9v398.2C0 486.5 25.5 512 56.9 512" style="fill-rule:evenodd;clip-rule:evenodd;fill:#007ebb"/><path d="M440.9 440.9h-76V311.5c0-35.5-13.5-55.3-41.6-55.3-30.5 0-46.5 20.6-46.5 55.3v129.4h-73.2V194.4h73.2v33.2s22-40.7 74.3-40.7 89.7 31.9 89.7 98v156zM116.3 162.1c-24.9 0-45.2-20.4-45.2-45.5s20.2-45.5 45.2-45.5 45.1 20.4 45.1 45.5-20.2 45.5-45.1 45.5M78.5 440.9h76.4V194.4H78.5z" style="fill-rule:evenodd;clip-rule:evenodd;fill:#fff"/></svg>
+			</a>
 			<a href="https://github.com/Timiz0r/" target="_blank">
 				<span class="sr-only">GitHub</span>
 				<!-- https://github.com/homarr-labs/dashboard-icons/blob/main/svg/github.svg -->
@@ -28,7 +29,7 @@ import { DarkModeToggle } from '@/components/DarkModeToggle';
 		</div>
 	</nav>
 </header>
-<style>
+<!-- <style>
 	header {
 		margin: 0;
 		padding: 0 1em;
@@ -68,7 +69,7 @@ import { DarkModeToggle } from '@/components/DarkModeToggle';
 			display: none;
 		}
 	}
-</style>
+</style> -->
 
 <script is:inline>
 	const getThemePreference = () => {
