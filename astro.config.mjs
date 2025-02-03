@@ -7,6 +7,7 @@ import { remarkModifiedTime } from './remark.mjs';
 import react from '@astrojs/react';
 import tailwind from '@astrojs/tailwind';
 
+
 // https://astro.build/config
 export default defineConfig({
   site: 'https://kyouha.today',
@@ -18,8 +19,14 @@ export default defineConfig({
       applyBaseStyles: false,
     })
   ],
-
+  vite: {
+    resolve: {
+      alias: {
+        "@": new URL('./src/', import.meta.url).pathname,
+      },
+    }
+  },
   markdown: {
-      remarkPlugins: [remarkModifiedTime],
+    remarkPlugins: [remarkModifiedTime],
   },
 });
