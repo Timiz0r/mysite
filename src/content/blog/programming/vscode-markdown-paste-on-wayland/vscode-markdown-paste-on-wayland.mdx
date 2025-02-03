@@ -1,0 +1,56 @@
+---
+title: 'VSCode Markdown Paste on Wayland'
+description: 'Markdown Paste only supports xcopy, so what to do on Wayland?'
+pubDate: '2025-02-03T11:05:19Z'
+cover: './header.png'
+---
+
+import { Image } from 'astro:assets';
+import sample from './sample.png';
+import filetree from './filetree.png';
+
+## Markdown Paste?
+First, what do I mean?
+Using the [Markdown Paste](https://marketplace.visualstudio.com/items?itemName=telesoho.vscode-markdown-paste-image)
+allows for the easy pasting of, among other things, images!
+
+{/*TODO: rendering keyboard shortcuts*/}
+Pasting via `Ctrl+Alt+V` will add the corresponding markdown...  
+<Image src={sample} alt="sample pasted image" />
+
+And it will of course add the file -- for which we specify the name...  
+<Image src={filetree} alt="file tree showing the pasted image" />
+
+## The issue
+As documented in the extension, Linux support is provided via [`xclip`](https://github.com/astrand/xclip).
+I'm on Wayland, so this doesn't exactly work. Well, there's a slight chance `xclip` will *just work*,
+especially since we're using the normal clipboard. Part of me regrets not having tried it...
+
+In any case, there is
+[an issue to add Wayland support](https://github.com/telesoho/vscode-markdown-paste-image/issues/116),
+but there's nothing to it.
+
+By coincidence, while reading the `wl-copy` manfile a while back,
+I found out the [`wl-clipboard-x11`](https://github.com/brunelli/wl-clipboard-x11) project.
+It, more or less, translates `xcopy` invocations to `wl-copy` and `wl-paste`.
+The only problem is that it that
+[the `-t TARGETS` option isn't supported](https://github.com/brunelli/wl-clipboard-x11/issues/1),
+and [this is used by `Markdown Paste`](https://github.com/telesoho/xclip/blob/main/res/scripts/linux_clipboard_content_type.sh#L7C27-L7C43).
+
+## The workaround
+I did as one normally does and forked the repo,
+adding [my own `-t TARGETS` implementation](https://github.com/Timiz0r/wl-clipboard-x11/blob/master/src/wl-clipboard-x11#L92C1-L97C21).
+A quick `make install` later, and the extension works like a charm! 🥳
+
+```sh
+-t|-target) 
+    if [ "$2" == "TARGETS" ]; then
+        CLIPBOARD_COMMAND="${WL_PASTE}"
+        set -- "${@}" "--list-types"
+        : $((COUNT = COUNT -1 ))
+        shift 1
+    else
+        set -- "${@}" "--type"
+    fi
+    ;;
+```
