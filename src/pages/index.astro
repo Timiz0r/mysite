@@ -1,25 +1,9 @@
 ---
-import BaseHead from '../components/BaseHead.astro';
-import Header from '../components/Header.astro';
-import Footer from '../components/Footer.astro';
-import { SITE_TITLE, SITE_DESCRIPTION } from '../consts';
+import Layout from '../layouts/Main.astro';
 ---
 
-<!doctype html>
-<html lang="en">
-	<head>
-		<BaseHead title={SITE_TITLE} description={SITE_DESCRIPTION} />
-	</head>
-	<body class="min-h-screen bg-background font-sans antialiased">
-		<Header />
-		<div class="max-w-screen-xl mx-auto">
-			<main>
-				<p>
-					Just getting things up and running so I can publish CTF writeups somewhere not just LinkedIn.
-				</p>
-			</main>
-			<Footer />
-		</div>
-	</body>
-</html>
-f
+<Layout>
+	<p>
+		Just getting things up and running so I can publish CTF writeups somewhere not just LinkedIn.
+	</p>
+</Layout>
