@@ -29,7 +29,7 @@ const updatedDate = rm.lastModified(remarkPluginFrontmatter);
 		</div>
 		<div class="w-8/12 max-w-full m-auto p-2 text-primary">
 			<div class="mb-2 py-2 text-center">
-				<div class="mb-1 text-secondary">
+				<div class="mb-1 text-muted-foreground">
 					<FormattedDate date={pubDate} />
 					<!--
 						TODO: add a git hook to populate missing publish times.
@@ -42,7 +42,7 @@ const updatedDate = rm.lastModified(remarkPluginFrontmatter);
 						</div>
 					}
 				</div>
-				<h1 class="text-6xl mb-12">{title}</h1>
+				<h1 class="text-6xl mb-12 text-foreground">{title}</h1>
 				<hr />
 			</div>
 			<Prose>
