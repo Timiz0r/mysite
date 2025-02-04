@@ -1,5 +1,4 @@
 ---
-import path from 'node:path';
 import { type CollectionEntry, getCollection } from 'astro:content';
 import { Image } from 'astro:assets';
 import Layout from '../../layouts/Main.astro';
@@ -10,19 +9,10 @@ import * as rm from '../../remarked-frontmatter';
 
 export async function getStaticPaths() {
 	const posts = await getCollection('blog');
-	return posts.map((post) => {
-		let id = post.id;
-		if (post.data.id) {
-			id = path.join(path.dirname(id), post.data.id);
-		} else if (post.data.single) {
-			id = path.dirname(id);
-		}
-
-		return {
-			params: { slug: id },
-			props: post,
-		}
-	});
+	return posts.map((post) => ({
+		params: { slug: post.id },
+		props: post,
+	}));
 }
 type Props = CollectionEntry<'blog'>;
 
