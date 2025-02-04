@@ -4,10 +4,15 @@ import { SITE_TITLE } from '../consts';
 import { DarkModeToggle } from '@/components/DarkModeToggle';
 ---
 
-<header class="sticky top-0 z-50 w-full bg-background/95 border-b shadow-md shadow-boxshadow">
-	<nav class="flex justify-center px-8 h-16 items-center space-x-4 sm:space-x-0">
-		<h2 class="pr-8 text-2xl font-bold"><a href="/">{SITE_TITLE}</a></h2>
-		<div class="grow flex justify-center space-x-4 text-xl">
+<header class="sticky top-0 z-50 bg-background/95 border-b shadow-md shadow-boxshadow">
+	<nav class="flex relative px-8 h-16 items-center space-x-4 sm:space-x-0">
+			<a href="/" class="flex flex-row grow gap-2 items-end">
+				<h2 class="text-2xl font-bold">{SITE_TITLE}</h2>
+				<h3 class="text-lg italic text-muted-foreground">今日は today</h3>
+			</a>
+		</h2>
+		<!-- TODO: though we havent worked on compatibility with smaller devices, this will be an important one to get right. -->
+		<div class="absolute inset-x-0 flex justify-center space-x-4 text-xl">
 			<HeaderLink href="/">Home</HeaderLink>
 			<HeaderLink href="/blog">Blog</HeaderLink>
 			<HeaderLink href="/about">About</HeaderLink>
