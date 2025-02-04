@@ -25,9 +25,9 @@ const updatedDate = rm.lastModified(remarkPluginFrontmatter);
 <Layout title={title} description={description}>
 	<article>
 		<div class="max-w-full">
-			<Image width={1020} height={510} src={cover} alt={description} loading="eager" class="mx-auto rounded-xl shadow-md shadow-boxshadow" />
+			<Image width={1020} height={510} src={cover} alt={description} loading="eager" class="mx-auto w-full rounded-xl shadow-md shadow-boxshadow" />
 		</div>
-		<div class="w-8/12 max-w-full m-auto p-2 text-primary">
+		<div class="w-10/12 max-w-full m-auto text-primary">
 			<div class="mb-2 py-2 text-center">
 				<div class="mb-1 text-muted-foreground">
 					<FormattedDate date={pubDate} />
