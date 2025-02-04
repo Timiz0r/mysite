@@ -17,6 +17,7 @@ const post = Astro.props;
 const { Content, remarkPluginFrontmatter } = await render(post);
 ---
 
+<!-- TODO: probably get rid of blogpost layout -->
 <BlogPost {...post.data} updatedDate={rm.lastModified(remarkPluginFrontmatter)}>
 	<Content />
 </BlogPost>
