@@ -16,6 +16,12 @@ const blog = defineCollection({
 		description: z.string(),
 		pubDate: z.coerce.date(),
 		cover: image(), // alt text is effectively the description field
+
+		// instead of the full path being the id, we drop the filenam
+		// useful for when there are images in the same folder, but the folder only has one post
+		single: z.boolean().default(true),
+		// or, instead of the full path or "single path", we use "{dir}/id/"
+		id: z.string().optional(),
 	}),
 });
 
