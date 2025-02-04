@@ -5,22 +5,21 @@ import { DarkModeToggle } from '@/components/DarkModeToggle';
 ---
 
 <header class="sticky top-0 z-50 bg-background/95 border-b shadow-md shadow-boxshadow">
-	<nav class="flex relative px-8 h-16 items-center space-x-4 sm:space-x-0">
+	<nav class="grid grid-cols-3 px-8 h-16 items-center space-x-4 sm:space-x-0">
 			<a href="/" class="flex flex-row grow gap-2 items-end">
 				<h2 class="text-2xl font-bold">{SITE_TITLE}</h2>
 				<h3 class="text-lg italic text-muted-foreground">今日は today</h3>
 			</a>
 		</h2>
-		<!-- TODO: though we havent worked on compatibility with smaller devices, this will be an important one to get right. -->
-		<div class="absolute inset-x-0 -z-10 flex justify-center space-x-4 text-xl">
+		<div class="flex justify-center space-x-4 text-xl">
 			<HeaderLink href="/">Home</HeaderLink>
 			<HeaderLink href="/blog">Blog</HeaderLink>
 			<HeaderLink href="/about">About</HeaderLink>
 		</div>
-		<div class="pr-8">
-			<DarkModeToggle client:load />
-		</div>
-		<div class="flex space-x-4">
+		<div class="flex space-x-4 justify-self-end">
+			<div class="pr-4">
+				<DarkModeToggle client:load />
+			</div>
 			<a href="https://www.linkedin.com/in/timothymarro/" target="_blank">
 				<span class="sr-only">LinkedIn</span>
 				<!-- https://github.com/homarr-labs/dashboard-icons/blob/main/svg/linkedin.svg -->
