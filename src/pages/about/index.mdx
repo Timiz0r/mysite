@@ -1,0 +1,127 @@
+---
+---
+
+import { Image } from 'astro:assets';
+import Layout from '@/layouts/Main.astro';
+import FactCard from '@/components/FactCard.astro';
+import Prose from '@/components/Prose.astro';
+// using short name because we use it in a tight area
+import S from '@/components/ScoreBar.astro';
+import { cn } from "@/lib/utils";
+
+import teva from './teva.png';
+import purrzer from './purrzer.png';
+
+export const proseClasses = '[&_.prose]:prose-sm [&_.prose]:leading-tight';
+
+<Layout title="About me!">
+	{/*
+		While grid isn't the prettiest layout.
+		Want related items together -- teva and purrzer, programming languages.
+		This precludes using columns/flex columns.
+		A flex row may work well, but wasn't able to find a good solution around images sizes/other widths.
+	*/}
+	<div className={cn("grid grid-cols-3 gap-4 ", proseClasses)}>
+		<FactCard title="Me" description="Who am I?">
+			<Prose>
+				* something
+				* something
+			</Prose>
+		</FactCard>
+		<FactCard title="Links" description="Where am I?">
+			
+		</FactCard>
+		<FactCard title="Fun facts" description="Fun may be a strong word though...">
+			<Prose>
+				* something
+				* something
+			</Prose>
+		</FactCard>
+		<FactCard title="Teva" description="😽">
+			<Image src={teva} alt="My grey cat named Teva!" />
+		</FactCard>
+		<FactCard title="Purrzer" description="😺">
+			<Image src={purrzer} alt="My tuxedo cat named Purrzer!" />
+		</FactCard>
+		<FactCard title="My best recipes" description="美味しいヤミー感謝感謝">
+			<Prose>
+				1. Pizza
+				2. Kow soi
+				3. Chicken wings
+				4. Fried chicken
+				5. Mapo tofu
+			</Prose>
+		</FactCard>
+		<FactCard title="Main programming languages" description="I love programming!">
+			<Prose className="prose-sm prose-li:leading-tight prose-table:table-fixed">
+				<table className="w-full">
+					<caption>The ones I use most often.</caption>
+					<thead>
+						<tr>
+							{/* seems to force the columns to be as small as possible just fine */}
+							<th className="min-w-min w-0">Language</th>
+
+							<th>Ability</th>
+							<th>Love</th>
+						</tr>
+					</thead>
+					{/*
+						by default, the middle column has padding on both sides,
+						and the right column has padding on just the left.
+						this makes both bars a different width.
+						we hack them to be the same width by specifying the end padding for the right column,
+						found to be 1em.
+					*/}
+					<tbody className="[&_td:nth-child(3)]:pe-[1em]">
+						{/* preferring to order by love */}
+						<tr><td>C#</td><td><S value={10} /></td><td><S value={10} /></td></tr>
+						<tr><td>Rust</td><td><S value={3} /></td><td><S value={10} /></td></tr>
+						<tr><td>Python</td><td><S value={6} /></td><td><S value={8} /></td></tr>
+						<tr><td>PowerShell</td><td><S value={9} /></td><td><S value={6} /></td></tr>
+						<tr><td>JS/TS</td><td><S value={6} /></td><td><S value={6} /></td></tr>
+						<tr><td>MSBuild</td><td><S value={10} /></td><td><S value={3} /></td></tr>
+					</tbody>
+				</table>
+			</Prose>
+		</FactCard>
+		<FactCard title="Other programming languages" description="I still love programming!">
+			<Prose className="prose-sm prose-li:leading-tight prose-table:table-fixed">
+				<table className="w-full">
+					<caption>There is no language I dislike. Except maybe Lua.</caption>
+					<thead>
+						<tr>
+							{/* seems to force the columns to be as small as possible just fine */}
+							<th className="min-w-min w-0">Language</th>
+
+							<th>Ability</th>
+							<th>Love</th>
+						</tr>
+					</thead>
+					{/*
+						by default, the middle column has padding on both sides,
+						and the right column has padding on just the left.
+						this makes both bars a different width.
+						we hack them to be the same width by specifying the end padding for the right column,
+						found to be 1em.
+					*/}
+					<tbody className="[&_td:nth-child(3)]:pe-[1em]">
+						{/* preferring to order by love */}
+						<tr><td>Elixir</td><td><S value={1} /></td><td><S value={9} /></td></tr>
+						<tr><td>mIRC</td><td><S value={10} /></td><td><S value={8} /></td></tr>
+						<tr><td>Go</td><td><S value={6} /></td><td><S value={5} /></td></tr>
+						<tr><td>Bash</td><td><S value={3} /></td><td><S value={5} /></td></tr>
+						<tr><td>C++</td><td><S value={1} /></td><td><S value={3} /></td></tr>
+					</tbody>
+				</table>
+			</Prose>
+		</FactCard>
+		<FactCard title="Hot takes" description="😤">
+			<Prose>
+				* JavaScript is better than TypeScript
+				* Japan's hamburgers are as good as the US's hamburgers
+				* Eurobeat is the best music genre
+				* Bidets/washlets are a human right
+			</Prose>
+		</FactCard>
+	</div>
+</Layout>

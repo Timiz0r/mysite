@@ -1,0 +1,10 @@
+---
+import { ScoreBar as S } from "@/components/ScoreBar"
+
+interface Props {
+    value: 1 | 2 | 3 | 4 | 5;
+}
+const { value } = Astro.props;
+---
+<!-- We have an intermediate react component because the tooltip won't work without this pattern -->
+<S client:load value={value} />

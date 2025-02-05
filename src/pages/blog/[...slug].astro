@@ -34,7 +34,7 @@ const updatedDate = rm.lastModified(remarkPluginFrontmatter);
 					<!--
 						TODO: add a git hook to populate missing publish times.
 						This code is meant to hide the last updated time if it's close to the publish time.
-						Since publish time is done manually and delays can happen, we have a long 1h grace period
+						Since publish time is done manually and delays can happen, we have a long 1h grace period.
 					-->
 					{ (updatedDate.getTime() - pubDate.getTime()) > (1000 * 60 * 60) &&
 						<div class="italic">
@@ -45,7 +45,7 @@ const updatedDate = rm.lastModified(remarkPluginFrontmatter);
 				<h1 class="text-6xl mb-12 text-foreground">{title}</h1>
 				<hr />
 			</div>
-			<Prose>
+			<Prose class="prose-xl">
 				<Content />
 			</Prose>
 		</div>
