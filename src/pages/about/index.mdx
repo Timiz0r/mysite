@@ -11,39 +11,71 @@ import { cn } from "@/lib/utils";
 
 import teva from './teva.png';
 import purrzer from './purrzer.png';
+import keikenti from './keikenti.png';
 
-export const proseClasses = '[&_.prose]:prose-sm [&_.prose]:leading-tight';
+{/* currently dont overflow text to ellipsis because it removes li icons. */}
+{/* this can be worked around by making them inside the list, but dont want to restyle that much. */}
+export const proseClasses = '[&_.prose]:prose-sm [&_.prose]:leading-tight [&_.prose:not([class*="max-w-"])]:max-w-[35ch]';
+
+{/* note that adding a max width will force all to be that width. we'll just need content to figure out its own sizing. */}
+{/* prose has a max width of 65 chars, so no issue there, at least. */}
+{/* also a note that we may be able to change this to just grow, if necessary. as-is, facts cannot specify a basis. */}
+export const factClasses = '[&_.fact]:flex-auto';
 
 <Layout title="About me!">
-	{/*
-		While grid isn't the prettiest layout.
-		Want related items together -- teva and purrzer, programming languages.
-		This precludes using columns/flex columns.
-		A flex row may work well, but wasn't able to find a good solution around images sizes/other widths.
-	*/}
-	<div className={cn("grid grid-cols-3 gap-4 ", proseClasses)}>
-		<FactCard title="Me" description="Who am I?">
+	<div className={cn("flex flex-wrap gap-4 ", proseClasses, factClasses)}>
+		<FactCard className='fact' title="Me" description="Who am I?">
 			<Prose>
-				* something
-				* something
+				{/* Approximately since 2025 anyway */}
+				* Programmer of {new Date().getFullYear() - 2005} years
+					* Professionally since 2014
+				* Currently located near Seattle, Washington, United States of America
+				* Cooks all the time
+				* VRChatter
+				* I speak Japanese fairly fluently! ネット上で「日本人だと思った」とよく言われますけど本当なのかどうかですねｗ
+
+
+				[GitHub](https://github.com/Timiz0r/)  
+				[LinkedIn](https://www.linkedin.com/in/timothymarro/)  
+				[Booth](https://nyanmamu.booth.pm/)
 			</Prose>
 		</FactCard>
-		<FactCard title="Links" description="Where am I?">
-			
-		</FactCard>
-		<FactCard title="Fun facts" description="Fun may be a strong word though...">
-			<Prose>
-				* something
-				* something
+		<FactCard className='fact' title="Job history" description="🧑‍💼">
+			<Prose className='max-w-[70ch]'>
+				#### June 2014 to October 2021
+				* Microsoft - Azure Storage
+					* Monitoring and Data Analytics Team
+						* Building on top of Azure Monitoring's systems: design, development,
+						and maintenance of Azure Storage-internal monitoring and alerting systems,
+						ingesting data from millions of service instances and visualizing and alerting on top of it.
+					* Deployment Team
+						* Design, development, and maintenance of Azure Storage-internal deployment systems
+						used to safely deploy code and config across hundreds of thousands of machines
+						for millions of service instances.
+					* Also some experience in service health and recovery, secrets management, datacenter buildout.
+					* Combined engineering teams, so DevOps experience.
 			</Prose>
 		</FactCard>
-		<FactCard title="Teva" description="😽">
+		<FactCard className='fact w-64' title="Teva" description="😽">
 			<Image src={teva} alt="My grey cat named Teva!" />
 		</FactCard>
-		<FactCard title="Purrzer" description="😺">
+		<FactCard className='fact w-64' title="Purrzer" description="😺">
 			<Image src={purrzer} alt="My tuxedo cat named Purrzer!" />
 		</FactCard>
-		<FactCard title="My best recipes" description="美味しいヤミー感謝感謝">
+		<FactCard className='fact' title="Keikenchi（経県値）" description="Travels through Japan 🇯🇵">
+			<Prose>
+				*114 points!*
+				<a href="https://uub.jp/j.cgi/qtjuTirFhzfjqezSYhedqEIzThcjq/" target="_blank"><Image src={keikenti} alt="Map of Japan depicting my travels per prefecture." /></a>
+			</Prose>
+		</FactCard>
+		<FactCard className='fact' title="Fun facts" description="Or boring facts 🤷">
+			<Prose>
+				* I had a mustache since I was 5 years old
+				* I first shaved my mustache at the age of 30
+				* I learned Japanese as a joke when my friends and I were going to travel to Japan for the first time.
+			</Prose>
+		</FactCard>
+		<FactCard className='fact' title="My best recipes" description="美味しいヤミー感謝感謝">
 			<Prose>
 				1. Pizza
 				2. Kow soi
@@ -52,9 +84,20 @@ export const proseClasses = '[&_.prose]:prose-sm [&_.prose]:leading-tight';
 				5. Mapo tofu
 			</Prose>
 		</FactCard>
-		<FactCard title="Main programming languages" description="I love programming!">
-			<Prose className="prose-sm prose-li:leading-tight prose-table:table-fixed">
-				<table className="w-full">
+		{/*
+			these are hard to lay out well. they tend to be too large and take up a whole row,
+			which throws everything off.
+
+			the easiest solution is to set a width! this works okay for most cases,
+			except when they flex grow -- where the table doesn't grow with it. this is due to prose's max width.
+
+			the solution is to set max width to full or whatever. if we were to remove the hard-coded width,
+			the table would then actually take up the full width no matter what. this doesnt matter here,
+			but it matters if we wanted to remove it.
+		*/}
+		<FactCard className='fact w-96' title="Main programming languages" description="I love programming!">
+			<Prose className="prose-sm max-w-fit">
+				<table className="table-fixed">
 					<caption>The ones I use most often.</caption>
 					<thead>
 						<tr>
@@ -73,20 +116,20 @@ export const proseClasses = '[&_.prose]:prose-sm [&_.prose]:leading-tight';
 						found to be 1em.
 					*/}
 					<tbody className="[&_td:nth-child(3)]:pe-[1em]">
-						{/* preferring to order by love */}
 						<tr><td>C#</td><td><S value={10} /></td><td><S value={10} /></td></tr>
-						<tr><td>Rust</td><td><S value={3} /></td><td><S value={10} /></td></tr>
+						<tr><td>PowerShell</td><td><S value={10} /></td><td><S value={6} /></td></tr>
 						<tr><td>Python</td><td><S value={6} /></td><td><S value={8} /></td></tr>
-						<tr><td>PowerShell</td><td><S value={9} /></td><td><S value={6} /></td></tr>
 						<tr><td>JS/TS</td><td><S value={6} /></td><td><S value={6} /></td></tr>
+						<tr><td>Rust</td><td><S value={3} /></td><td><S value={10} /></td></tr>
+						{/* on bottom because not exactly a sought-after skill */}
 						<tr><td>MSBuild</td><td><S value={10} /></td><td><S value={3} /></td></tr>
 					</tbody>
 				</table>
 			</Prose>
 		</FactCard>
-		<FactCard title="Other programming languages" description="I still love programming!">
-			<Prose className="prose-sm prose-li:leading-tight prose-table:table-fixed">
-				<table className="w-full">
+		<FactCard className='fact w-96' title="Other programming languages" description="I still love programming!">
+			<Prose className="prose-sm max-w-full">
+				<table className="table-fixed">
 					<caption>There is no language I dislike. Except maybe Lua.</caption>
 					<thead>
 						<tr>
@@ -105,17 +148,17 @@ export const proseClasses = '[&_.prose]:prose-sm [&_.prose]:leading-tight';
 						found to be 1em.
 					*/}
 					<tbody className="[&_td:nth-child(3)]:pe-[1em]">
-						{/* preferring to order by love */}
-						<tr><td>Elixir</td><td><S value={1} /></td><td><S value={9} /></td></tr>
-						<tr><td>mIRC</td><td><S value={10} /></td><td><S value={8} /></td></tr>
 						<tr><td>Go</td><td><S value={6} /></td><td><S value={5} /></td></tr>
 						<tr><td>Bash</td><td><S value={3} /></td><td><S value={5} /></td></tr>
+						<tr><td>Elixir</td><td><S value={1} /></td><td><S value={10} /></td></tr>
 						<tr><td>C++</td><td><S value={1} /></td><td><S value={3} /></td></tr>
+						{/* Goes on bottom because rather esoteric */}
+						<tr><td>mIRC</td><td><S value={10} /></td><td><S value={8} /></td></tr>
 					</tbody>
 				</table>
 			</Prose>
 		</FactCard>
-		<FactCard title="Hot takes" description="😤">
+		<FactCard className='fact' title="Hot takes" description="😤">
 			<Prose>
 				* JavaScript is better than TypeScript
 				* Japan's hamburgers are as good as the US's hamburgers
