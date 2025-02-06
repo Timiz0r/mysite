@@ -1,0 +1,103 @@
+---
+title: 'HackIM Goa CTF 2025 - Powerplay'
+description: 'Welcome to our playground for powerful people where you can pump yourself up and get awesome prizes!'
+pubDate: '2025-02-06T14:16:37Z'
+cover: 'header.png'
+---
+
+## Challenge
+import { Image } from 'astro:assets';
+
+import challenge from 'challenge.png
+
+Here's what the challenge looks like:  
+<Image src={challenge} alt='The screenshot of the challenge showing an ip:port and link to the code.' />
+
+And here's the full code:  
+```python
+import numpy as np
+from secret import flag, quotes
+
+prizes = quotes + ['missingno'] * 4 + [flag] * 24
+
+if __name__ == '__main__':
+	print('Welcome to our playground for powerful people where you can pump yourself up and get awesome prizes!\n')
+	player_count = int(input('How many players participate?\n'))
+	power = np.zeros(player_count, dtype = np.int32)
+	for i in range(player_count):
+		power[i] = int(input(f'Player {i}, how strong are you right now?\n'))
+	ready = False
+
+	while True:
+		print('What do you want to do?\n1) pump up\n2) cash in')
+		option = int(input())
+		if option == 1:
+			power = power**2
+			ready = True
+		elif option == 2:
+			if not ready:
+				raise Exception('Nope, too weak')
+			for i in range(player_count):
+				if power[i] < len(quotes):
+					print(f'You got an inspiration: {prizes[power[i]]}')
+			exit()
+		else:
+			raise Exception('What?')
+```
+
+## Analysis
+There's a `prizes` variable that contains an unspecified number of quotes, 4 `'missingno'` strings,
+and 24 copies of the flag.
+Furthermore, we can retrieve the flag by attaining the correct power level.
+
+The issue here is that we only get a quote if our power level is less than or equal to the number of quotes:
+`if power[i] < len(quotes):`. The leaves but one option: going backwards via a negative number!
+Also a quick note that we need to "power-up" at least once before we can get an "inspiration".
+
+As far as I'm aware, Python3 numbers are infinite, so there's no way to overflow them.
+Luckily, the challenge uses numpy's `int32`s: `np.zeros(player_count, dtype = np.int32)`.
+The challenge is thusly to find some number that, once squared, will become a number between -24 and -1.
+
+## Solution
+A quick brute-force should do the trick:
+
+```python
+import numpy as np
+
+for i in reversed(range(np.iinfo(np.int32).max)):
+    a = np.array([i], np.int32)
+    a = a ** 2
+    if a[0] <= -1 and a[0] >= -24:
+        print(i)
+        exit(0)
+```
+
+We run the script, and few short moments later...
+
+```
+❯ python /mnt/kali/ctf/nullcon2025/powerplay/find.py
+2112767193
+```
+
+A quick trip over to the challenge:
+
+```
+❯ nc 52.59.124.14 5016
+Welcome to our playground for powerful people where you can pump yourself up and get awesome prizes!
+
+How many players participate?
+1
+Player 0, how strong are you right now?
+2112767193
+What do you want to do?
+1) pump up
+2) cash in
+1
+What do you want to do?
+1) pump up
+2) cash in
+2
+You got an inspiration: ENO{d0_n0t_be_s0_neg4t1ve_wh3n_y0u_sh0uld_be_pos1t1ve}
+```
+
+And we have the flag!
