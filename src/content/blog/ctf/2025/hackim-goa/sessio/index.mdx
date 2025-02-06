@@ -1,0 +1,502 @@
+---
+title: 'HackIM Goa CTF 2025 - Sess.io'
+description: 'Long sessions must be secure, right?'
+pubDate: '2025-02-06T15:24:39Z'
+cover: 'header.png'
+---
+
+## Challenge
+import { Image } from 'astro:assets';
+
+import challenge from 'challenge.png'
+import ui from 'ui.png'
+
+Here's what the challenge looks like:  
+<Image src={challenge} alt='The screenshot of the challenge showing a link to a website.' />
+
+And the UI:  
+<Image src={ui} alt='The screenshot of the ui showing a username+password form and a link to the source code.' />
+Here's what the challenge looks like:  
+<Image src={challenge} alt='The screenshot of the challenge showing a link to a website.' />
+
+And the UI:  
+<Image src={ui} alt='The screenshot of the ui showing a username+password form and a link to the source code.' />
+
+Here's the PHP part of the code:  
+```php
+define("ALPHA", str_split("abcdefghijklmnopqrstuvwxyz0123456789_-"));
+ini_set("error_reporting", 0);
+
+if(isset($_GET['source'])) {
+    highlight_file(__FILE__);
+}
+
+include "flag.php"; // $FLAG
+$SEEDS = str_split($FLAG, 4);
+
+function session_id_secure($id) {
+    global $SEEDS;
+    mt_srand(
+        intval(
+            bin2hex(
+                $SEEDS[md5($id)[0] % (count($SEEDS))]
+            )
+        ,16));
+    $id = "";
+    for($i=0;$i<1000;$i++) {
+        $id .= ALPHA[mt_rand(0,count(ALPHA)-1)];
+    }
+    return $id;
+}
+
+if(isset($_POST['username']) && isset($_POST['password'])) {
+    session_id(session_id_secure($_POST['username'] . $_POST['password']));
+    session_start();
+    echo "Thank you for signing up!";
+} else {
+    echo "Please provide the necessary data!";
+}
+```
+
+## Analysis
+Instead of there being a way to spit out the flag directly, the flag is used to seed an RNG.
+
+```php
+$SEEDS = str_split($FLAG, 4);
+
+// ...
+
+mt_srand(
+    intval(
+        bin2hex(
+            $SEEDS[md5($id)[0] % (count($SEEDS))]
+        )
+    ,16));
+```
+
+Random numbers are then used to generate the session.
+
+```php
+$id = "";
+for($i=0;$i<1000;$i++) {
+    $id .= ALPHA[mt_rand(0,count(ALPHA)-1)];
+}
+```
+
+### Seeds
+The first important part is that only the first character of the username is used to seed the RNG.
+
+```php
+session_id_secure($_POST['username'] . $_POST['password'])
+// ...
+function session_id_secure($id) {
+    // ...
+    $SEEDS[md5($id)[0] % (count($SEEDS))]
+    // ...
+}
+```
+
+The flag is split into sets of **four** characters.
+Based on the first character of the username, those four characters are unpacked into an int32 and used to seed the RNG.
+
+```php
+include "flag.php"; // $FLAG
+$SEEDS = str_split($FLAG, 4);
+// ...
+$SEEDS[md5($id)[0] % (count($SEEDS))]
+```
+
+`md5()` produces a string. We're using the first character of this MD5 hash as a number,
+and PHP will attempt to convert it into one.
+If we pick just the right usernames, we can choose which of the 10 (0-9) seeds is used to generate the session id.
+The only potential catch is if there are more than 10 seeds, so we'll just hope the authors didn't do that to us.
+
+### The session id
+We then generate the session id with 1000 random characters.
+
+```php
+$id = "";
+for($i=0;$i<1000;$i++) {
+    $id .= ALPHA[mt_rand(0,count(ALPHA)-1)];
+}
+```
+
+However, they're not actually random! After all, the RNG is seeded with a static set of seeds.
+Putting it all together, if we can find the seed used to generate the session id, we can pack it back into a string --
+aka a 4 character portion of the flag.
+
+## Solution
+*Note: the solution code is long, so I'll put the full code at the end.*
+
+First, we need to grab our ten session ids.
+To do that, we need ten usernames that start with `[0-9]` -- or are equal to `[0-9]`.
+Here's a quick script to find them:
+
+```python
+import hashlib
+import pprint
+
+table = {}
+for c in range(32, 127):
+    hash = hashlib.md5(bytes([c]))
+    k = hash.hexdigest()[0]
+    if k not in table:
+        table[k] = []
+    table[k].append(chr(c))
+
+pprint.pprint(table)
+```
+
+```
+❯ python usernames.py
+{'0': ['#', '%', 'C', 'X', ']', 'a', 's'],
+ '1': ['6'],
+ '2': ['+', 'Z', '\\', 'h', 'l'],
+ '3': ["'", '*', '-', 'E', 'j'],
+ '4': ['9', '=', 'P', 'U', 'c', 'r', 'y', '~'],
+ '5': ['.', '<', '@', 'S', 'V', 'Y'],
+ '6': ['&', '/', 'M', 'W', 'm'],
+ '7': [' ', 'A', '^', 'n', 'q', 'u'],
+ '8': ['(', '7', ':', 'F', 'N', '[', '`', 'd', 'f', 'i', 'k', 'p'],
+ '9': ['!', ')', ';', 'B', 'b', 'v', 'x'],
+ 'a': ['4', 'K'],
+ 'b': ['"', 'T', '_', 'g', '|'],
+ 'c': ['$', ',', '0', '1', '2', '8', '>', 'H', '}'],
+ 'd': ['?', 'G', 'I', 'L', 'o'],
+ 'e': ['3', '5', 'R', 'e', 't'],
+ 'f': ['D', 'J', 'O', 'Q', 'w', 'z', '{']}
+```
+
+We take our pick of usernames and generate our list of 10 session tokens.
+
+```php
+$tokens = [
+    '8bwxvicb2ogv1_3akeawjgpxzh_x-1zxogrg-ze1xdorambake92o27sd9kn4fgbvlw7vm15uw_qbx5ifcrz5ugk8-lgoybttwaw_m_19o2611uom602f19-sy4gk-dslc7tiiorkh1kvjo3aurufnxon8ml58ceuj4d4leyzsxpicikz5pjon5hrfhmyo5v8ud-_0r5p6tcn94lgype692h205tlfo8upoysem52onxn6gj5x81lhbsect0x0kujehsgmbqglydjws8817c7tn9in_l8si2e97qen1k7lf9aepk9qcofm5n9rmuqfswar3rh_j6k0povdq21_9_60fii3wvmebsmmka24une_6r6tlfn_ywql-meyw47b4-wnhr3g0pjlfnlj6cxdka2bzp7j-xybc8dzlwgaepsv2sdm0153eh4uaeum5f4qft91t-nr71t8ys2e2bahnm3o819g83hpwmsyevsh_8cv_ckkqulh10hxf5npmz-rtnzw3kegyu-ngatj-lkqz4xjjfch-qpj870t856-74wom5k042_1fsn34yab7labrlch0bo5eigni1az-r4v695eofu6hy6-ti77l-650m-wwptpbe3xcyggoq6128j5g7zpyzw17as4h1txpozjj5uil1l9f7kp5qzavaitcrqwnruxo36y-0o-p-1dxqixem1-vsgxvz5fi18e6yldwxioyniy42xoq1hf41_ttiy1eatedfb69ebmwk9-nponqejdxvdj4q6xzy2e57fi62wieog5d7vv3cc6btfpwjh5778a7q_uz92tzff2bc46jryvg4upb69o1dc-s1i-5to7vnw0dg7vdmfvdh-9r6y6zazsr04efigi-yt3mu5eahregt-x4k5yie5ko272pvmoqi58rwcl-yb529jbxwndr3qprby-la87byucmmprkk5dj_-bzofyua2dj25x4el4x9u-l8op-3_7a5wqi2',
+    'sc_0nsixk5_mrr8xa5f4hday65tfxxbhx_bc-h282v9cq0v-c7uqmrrvr3dxohraf78i0emwdtkg1dlrpe9p-u9nss_pp4hjw_1suj3q7ptdc53mkyrh2idnlaj0qys5i5l-753macfng3r18cv99spw6w-rfg6kaszppn55ixq08q4kive0jr1l31bipcdx53rf0m5wjtah4fsmm36bive6lw3vt66tioky7h1uyx4_2uvkgi8jzh8sfavfo84hco4t-1oj6a5b536zgyq1g1-i_3tuueqh5zhfba5f2krxwissgpj14s2vwf_d0g4egl8_v3yxd781_w764v_myk8len471xifr4e1r_h5tt52uz6evkt8e2y1sgai5lz-1eruvlz_v6qsstuo77io9vf077hohd43kw9v-9xri6xevebt7zfq620ft6swlskv8bu_3142uomqxjbzlz-6dil14n46l0p06ehf4e91npqv7_nva9sk5gk11yiv_k79224xwkfdt3fmej5udmu1dwgxhuoeu4uzisey_2iplyozm4s_xl5t6hcjgm4ajn348egmaho0-cwz_e3275pb_6iiq0j773qniwgho53b5fuazl1e10ki8kbo8q6r0h7rvo6-irj_o0v7ve5vp-3ku0zlojz1ychhp5bdzlgiqmjre3lap8qljf3i3dav0z_2dj9boh29qo_0uhqczp2myh-8_zkhhlx1vxwbmc65par9wzjmg5dom449cqdcxvxwgcu1vlqj1mombe-px1g6pbbap_e2153qk4yikd46ufwk1dklmsdd_eixmrvy1lq07nci86xa1nmgjgmrawf5-mf8mbpm4hi-fiznzguqm8ttozxxdk7h5lgbp7jonq0eew6m58oyws_h7_44ggc_sgbvy7_oxvtyyds-w9s664afuk_8xlekl_4-txneg6v5jure99mh9z1ee_o2113qdjl8ge6tsx_-d2_-jxl7',
+    'g1c84ou8utwl84j_6i58590s73_sq16pyu4wz2l1c64t5569iw6t111ra--zt5rejece6zekx-jzt4a887e5b-i-nc2m_74jz9m-49zunlb86838s1sd99usztvfrtk7tyvzma_lp9m54mpl-l6o8t-7s841qfqtjms5h7asdx68d358qj092ad7pe273-3f55xl3gkitei6avduldbjwcimk3fd9fbdcl7rh9z5a20oxe3rsenugp5la9e38luvgqgj101rg-in193thfqc6vcb7tg_7bihl6qvi40_j0_1ar9oddvu45fgqe_5zs9aw7q2vpf2ia8vud2g2y5fsx3-ity62xz-2hca5j2s1uuof_4noikn9t9562ow704a62nln2-c3wncc2rn5lp9nj8vp1ju8otvakl61nj2tpqq2yzyho_vq3b1a8qcap7zvz0qowjj2io9r8xbya41dqwyczlfh_krd_lxp3h6euf2t9ghnbxe8_m0_xpy6j-wu2jakvnhdao0p7i37ilrv2n4t-j-of517_zoat8yjk7vtj8qe_3g6b9nm1przgyl0us6h87lp212tz4pqozhmt7bk-gjnybpmc7c9jq3mr7-auj82kv87xi3srfdask7vrldm1pen2olu8oal92871r8cccad917m_7hyisn_lik1-smgvj7ggitl12bra26ziusf1mtczmbd15gab9cg75zljb_36ci8af656r7jymgqrwbe4xxxuxyczct3d4daubln_3kh6u90_htmyrrj3ps4mqq-bfw3i4o57c2ivflas57wews4989w56w7bcilzr2_ascr--21fais7kvilcu1nkoxqa-h731cssy0lu85mkcg-ezkuq7nk456f1924by8e-ghx76h8nl4-nc1uy0wbwg5n2geymxlxn1h2jx7plzab3vyksgyva_xpckwdvqkh1ftp0w_6jgfgdtdsf0dxo0cx02-7bdrawl',
+    '0po4g-sbcvss9qnfkcm65kjz6zp9j32ujl5c9977k74a0s7o0rbn4p1ol9dahyv-9-grbplrw9j_mwjmq581gp2-ozmwv4ci2ufozasv26b3wzj6kqonzdra9hfwvev2a4ir48vw9-6vgj97h6_2ena_l460-7agxencbqs3og4gr8qxia6k7l6x39h8h94d8191hg-rkvd_58aae783ugm7pvtlwaswk14wyj_3yc7xji-ao5t_375y0b0yvem83-5i4hnyx0-9e1fvg5o81ykatzidbr3zef-yhi4td43k90kld0cd--66nlut1-b2rlow_td-grt9g7a53dh3p3x0fgzqfp4xw-q99y1mfl31ui9dx4xhy2bpc_azrwmt-dh7igg33yu32i0ad_-cu7wzt3k6d_1rptt_7e0sigld_6k03-xgv6yf2brp9x_s05yaifnbn-5y0n9a5nzi3yzb0qxpb67bt9-h2p_5z8n-u545mx19c3nshqqmj2h92iz67fdcnknd6w8rhvz5nk20mqmhy3pzrc0s0-d7hhotq50v1i6qaejswsmgt7ennmswlf9raqi3qmttqj98lvcm42j-hlkb7nztxhrq3uws96o-7i3kzf0340ngn9289nenkcgz6ubaaz82wqzz3jjdsh4fl7ufcy-vpggv_u7ojb2qhlhtfe2f187y14u226wx98111lji_8yd67-lwyioq5m9enis9kletlg196426cmlhsxa8hozijztx0t1v4qqyybr8e5c3-tthvp23ldx55xt6mutechs-laiptjcyrkble529-e8563jsrhvb_lbddqywpuvivgcxsd63yf8-94k6vf7ny74m36dvqzwzlhgn0w4d3io3pw6zh5qp964pz84dlzff84imftvqe0hyawv_b1abqyzlmfay3gnin5j7qaatq2rz96btlr867pcc30sm8eg9xqoddhd3nk63yiz1zupyusth_wj',
+    '9fvvmt2mgj7x-n1fu4_piinllkox609ha122fdeb-8urxd6__8f3mchcy1-mvv_lmv0jwv6xlhf3u6sp4vs1ctc-cwet4jjup01ooz34vdrlxnfz7r54bf5ue0up7mpm6sjcmq-1eqedn4offhoors-spl3qovbe6_re-pwhcqhlgadpzy5jwxdkiqr3jjmsz7rue3gsdrvfpbs0v30bb1fl7a2judd11quycb8s0zgsg-82nqu9nvy_5nml6t90p0zgs4k2b9jinf46js1e9frgkklqp7ydtv1emtjuub6kviz9h5b-3cbiyj34aga_xou2cwto882c5c7ec3k7gcxk4vc8-1p5bubhbv1eptsliz1n8qhwo7f5z1my0euilka_slfbwtdp685v5rrep3v3utln1n-our6g_mwvq0g9wn-l3uz3h3mqex2or_dlme6f7pyaw6ym11-rlm0zy6b1flf6pby3jus1f2v6n2pf6hyy0rmots384i94qv-wnk5wgoypfpk3u-muwhwvbw4foznxot6g9dqiow67c4yczj2fcjqnj8zuuuun-b4kbms96gumll1jljtqt3cd9glj6w7kgvsyc81vkhxxdplrfrh18j1t_sm-u8gbytmv5mse9enwudxb_x-5o982drkoyt347f15_g-_97zcu-nz6317jse4hwdtcfd4wbrx7mhrdaik553q9wf4m9mbt4e5zgc2bofpkv386ceop-uh00pzuj12cgnfixgtw7_ehyg_55srvdd7wf1cgz1zflsmaxw8_evyft93oa82lybq8x157sohj3tj8dr7ogrtg_bwijcv7ivjirhp1grxoy2ghm-ear-d6liswceuhtp6cqjs13l8nqdtqycm4ljgw4tlvfh7gndxsipstwxfj53kzx_1w080g8wut-w6nc-ngp92zcrhe4b5kl7g2lt_9-su8r4naz9nvw5-m1g7du16ugbgimnzob58a9ei',
+    'thw9343nszorwv8ckn1dw_mthklympt0z1_j4o1eg-0yvrivd9nxtlr99yqc4c7-1xps0-3f2al24w1lqq8zh26agqnppf4ajy2l6k_hl3-ijal67uhz83xx7t4c_xbnl79ls_2puxsnpfk5wtd1dbbig5a5lplmhle5vsldq7fh41g01fl-wjll5xbf4spnlr-waoqztazn673otp5c6hlkhwvw4q6i9rf7zfn3p-y-h8mwuatcij7pa2jd5jln5pqp92pn0-x4lgbtnaezu5stixwk1at4oef464sg09neshabbze1f60wvyaexlwh2577gq2g7znlr0y91y_xflwq3zn-lsdb1f7whq8r2y89h1hcrvr3l9cdrdzmzja25ss3f6pm2ullp5k39d6z7uiol8vmjmwfxk-1ydirxq45jw07smqohmmrf-162olfaz5dhzd1753-57v7mkkwl60p1pho1l16hoxvhxe2zyumnbizscb5q-97tbjyw5dr1d-n_kg2wqs3ftiu9gm8k6nizrhbu8ip255akm5suld9rtigzgxhh4_pnk9z-rb3x6jxdoxggsyp5ulzaecphhe8dm3xcew44tto2vspzvlfjhmih2xeuuv5m6ae3ebmgulef0-seohpqgd1mqa83h7apcwwq28e0er-x4s6idlffyx32d5dy5y0ahgdcrmjc-25o-f72nihamy3s41jlaokhyjydi7ozjjhaiwr5we60q3l7gbtymrrgws54bhxo4h77p8efmwtbpanmt7eyyzdvyolwp12be54z0ekg5ndi23yfy2bdbkixowh2n_tvk4suuy8shrkfjyn9lz17dijpz-408ah7qgz3a7o5b_91own5z6rmh-q-rzh-crcxb4rw004w98xmt8ksc2e3avuew710eclj7-s3s86agh7qvorzw9sfcf9hcads005piqv9wovdo37csfwper2nyc0n30k6ul4swvpqf97',
+    '8esmqjz4i1gn01-dulpookzbsrayhkuej5ecl44itncptzf0m10iygm3tky8elibnvucuce_jro1bucp5e14x7p7txv1au5ojo60g-ucx19lmumas65082pqykolwam5t661rekjr0qp-cghcmoouzrhte1jn1s16fxbm_a3nkv-y5t7j-j-lcmj6mr4kt4u25e1a1jcmvdvghdn0s8gg2n1_rlmb3babaqh7xf1quustywt_o6eedl_irbp72yo0r3dav3si779ebb3ncuk6fobqqc-9thcy544_yfzgyyu9v2x0h7gnbp3se30wio13e8liix9epfyb27b-lpw4ibr85kly_lvmu3wvh2_htdupiuxas11_h0j0ini-zvmosrubbtwxzwch1sk3qxa1wbeglmhcmgjdrh25zg41odaxtn4j4p7jr1bx-reijji4tjo2_z2s0y6n6bdr7y5y05e5_zjzglkafy0d_wdi7lxw9zgy5ww2fsshdftccl4p8-v_inurh3-e3kj6li0lij5p5d1sv-1w61_jj_yxr0eeo-fbqdhb8aonlinzu0t7tb65lrg42ks5-_d3ahbs0qc6nejmlo6uks22fuq92wzb_-xjcrkdh4fb_aoz144oahz72eymbxrri7zgk4d2rgbkyawed39x6__lx8o0xnnjxl8vr__8s2wcdtz1fkofkyf_3rbmn11imaq36-4zxqy5mjecw8hjcxe3djijx3-a06vfhizgke8l28t3u8wir2jx8ybocnm4d-o-dsk9zy623jl-bgpwxaab52nlurqt_r18yz6_6tte8f73strfi-u12lh8-c8qapiazbm6or526wb7fqo-s3vk6x0inq--ie_8nubmh4azzj9x4-xsklwnnkxx69pi7usg4xxlpuceja3mg-n63a0pu82od7nttmxi_c9x_2l6d6iht1-9nnxsxxovfo9lg-vm46roidnd_vh9y_6-pbza3-r',
+    'd5k28813ss1i_eitqvatanj3p3v5xxzbdvzbl6la00id6w6hxi9bcmvxoxc7lax6gkd2n33791fwrimzskzxx0uurjp3-950ks_77u-v618ab5s_jrvra98n1fz2nu5gst3ws_uv6ojj2v_g9408v97b8y0-8e6ha8ia8ywbbpy19pw--994_ei_venkr216g4j26prm6d00-b9ug67o-ulfbf44b9k50iyk7sndabixbos_zu1ri68uxdvkq7e05ci60if_ma22r29s-xrs9r2j0x_s862mhoxosonfcn7pmpc47ehege8l_knoqmafdhc06oixw41sjgmtj5-vorus1kaqjqqgj71wrfdmv0r6dvs-35ojw7bi_9uchqyxufbhsfbz0bkg63q-lwtgxzvqy979xc-g7acp546fdca6fsnkazqy-al6h14n36t4c80fpub1i35m3f9d65175-9vc318m13cib3lghr7jv8rooi463byy_-q_ercfmkak0406n2iz7dd97ol35fwzz1kj-15hqcfpme2g208n0w32k0vv4k8r3fboptk-_k0f-4ejq51um148yrekbxf9cvkeg1fujlgwaimtzw_n8y1dnw4_c6lh8_6irsdlzavkulc25eh0n5ox4z2amg_rag35z9n6dyc_fe__f0ettav8hxmh2w6dp7o-lp-2s_vt5bgp7eeq7nfm8_l8nxsz4xhcc_ilj90uz89okljya2qyr5v-85crhh3gi7bocud0sdy8zdlze8td0b-xsevzw4lk2-6q84g_t_e5ili5z00rrd7roc4-3q90ca8blttyyrp6knsick63btsh4bf9pao9bxqrb2m7idi1hlbsmp5l-n3pfdwkmw37l1_8iu53v3sszhp7dta7vuw48bgiujkiqwbb6ywraw_6_qohlp8wm42unch4d9c3i976pq2evpt0dcj3qzcgng16da4u8s0ejr6klra584ns-p9',
+    'u78grj0cjwuogn8-utrqg5j_b2pvgd3fl6-6up9-bs0cft0bw-7_zwa7sr2xdbjh7utiing8b-cafzm9yxurm6eyn6gpba3nmuv457vafcdsfr9lipsdlo-qaty3gzmzuyu_4haeeewqa9zkxx5lj23d5iuf6xz-0walxmwwzfej4gq9zw3ta2ogpl3f7lh_qzd26db8b-_zwdyyspk20qklo-rne26cq96o3at8lq45n8rdyr-wsx8yr_x4d4g6nx5ll-729w7gm7m80ddzx6b9v-q58fg2t51m-to9uwwzv1c5yvzhhvo7w-x89f8uqzw_i7hjttd5__9ihmi91pn1j6_p6hon29rl1wm49nwwp_j6h9yq87cerq8tzd1jtt6254-_p02wi0b7nt3ozvof00myn4pz4y29mfka9bau5nc2fbwlnmvs4y3383b4_rey50jxd5sxli90qg945fa3iqgmz3jjq47_fj5zooypd1-d_h_s01eckz2t3mu3315etbhfy1rappjq_ko82yd39i7742_kfkzehkcpko49r3kdryr9x9n2oo-lpzlep5ur6t4j1o4prajjl82q7-o95wd2i4phoqyrc53dx3mwa4sn-v0lcn4npdhucnu4i5_e8iqkukfrwa616trxqn3jjfb3t7axda-tlkng5-yietkngvls1-vu09n75c15jnjmhskz9op-9hymiqt6ap4f0ut-knqoh648zfj2bwh6ap9lt0hvu_ix1z67cgnq4_x9q87v_wphuy86qidh_e8g3ue8k12cchv-j2efnni8ebnp1uheiv4-m7z38c9kbu20nreomd2gq4hln_-k2rr-yie9b8r_wuypy7f8kys46n5zontbrqhb9m3hv6cim_m7tlo2tcwpsrxpn_u90-1n_7rxe5sn4ttn4wo-986y5he0fs19tsxt7y3z5qqel1prr-s7z777s0o7bq97-us099ykj_vjg7_hy_b-',
+    'a-jtqk69cbq5k2n1asouw_-c01e3q2o7kecbeg2_k1psqvqj9b2htoojg5s4o4sqbbz43onpib60am4jjbjzig6yw5nexm4c3dycn9ntoda1tsn_xl0swl_h3eww1retewksr9qyz1vhe8v-cyi2txn319-fancgqy0dnipm4069vpwwwdbyrayobopk3u0ivs8gb421xkt6nmktb7-d16_ospqq0wmsmpltenk_zsov80gs9dany5c4krv5fn3hk7of4fcgcn8xezbkf078bv3hn3046qstk0bsc36p39m-120s44pl9ggibpor1kau1k_jhuhaad7ckpjibkd9x_q0pckshxsm-9t8oox4p52-bbwid77ixyw9susgtjid-cv7kac5rtiuux73ckt88qf21eg3s3custo6_o25y8w709qfguzzddl7wfd0_vjucjm6qcwtzwg4i15_qshz4x74d-rxi05bc7dpn9x9_a2oppxpjs6j6jmik_niltmqlb586kw-xcbma62x1vd08_0-m055k1uzm82z_tat9mw7nogzhqmf0ib6_6uttaeuqkzfrd8mm5qpvsrwjagf87jkhlg2p52dlwp5fwxjhoya8ensjpe3q-g2a1rq-n8wmziqa9vklxmjinm27mo512hnzvxzytqb0hejnjt8122gxf0xlpwzkmt8z2lfcwkvjjy-5xfp516gmg1ybmk4c1wzh5p4oqkvf6v5tunb2p3id8c_mpsjfmpufmteaq7ty83xa6ggrtm7jgu55n6lu-ejthx-_ont4imfrrohshk7bse9m1h1fosssayzh7qj338kevwr8u24jwtf1qo0v_l7hj03c6i93v-9q7bb6gfx3ymtbjr-lwf9g2utha37spum9y04nz03uwq5s9_roil8zv68d6oczfkhe3dlhvq_0x8lhgearklcx2936x_lhtbph7_uprmte9gtqtcow64xdjphlx0t9n8vqgst',
+];
+```
+
+### Mostly solving via permutation
+We now need to brute-force the seed.
+I chose the flawed approach of generating permutations of a character set.
+Rather, each permutation I generated didn't allow for duplicates.
+Still, since that's what I used, we'll go with it.
+To do this, we need a function do generate k-permutations, since PHP doesn't have one, unlike python and its iter-tools.
+Luckily, [StackOverflow to the rescue](https://stackoverflow.com/a/43307800)!
+
+Since two billion or so seeds is a lot, I chose a relatively conservative charset based on other flags in the CTF.
+Should we fail to find matching seeds, we need only expand it. Spoiler alert: no need!
+If I recall correctly, we test up to ~200,000 seeds, which is a nice reduction.
+
+```php
+$charset =  ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0', 'Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P', 'A', 'S', 'D', 'F', 'G', 'H', 'J', 'K', 'L', 'Z', 'X', 'C', 'V', 'B', 'N', 'M', '_', '?', '{', '}'];
+foreach ($charset as $i => $c)
+{
+    $charset[$i] = ord($c);
+}
+```
+
+Finally, we can get to brute-forcing. Here's the imporantant part of the code. Again, find the full code at the bottom!
+
+```php
+$target = $argv[1];
+$token = $tokens[$target];
+
+$solvedToken = false;
+foreach (permutations($charset, 4) as $flagpart)
+{
+    $seed = getseed($flagpart);
+    mt_srand($seed);
+    $p = pack('N', $seed);
+
+    $success = true;
+    for ($i = 0; $i < strlen($token); $i++)
+    {
+        $num = $translation[$token[$i]];
+        $rand = mt_rand(0, count($tokenchars) - 1);
+
+        if ($num != $rand)
+        {
+            $success = false;
+            break;
+        }
+    }
+
+    if (!$success)
+    {
+        continue;
+    }
+
+    $solvedToken = true;
+    echo "Solved ", $target, ": ", $p, "\n";
+    return;
+}
+```
+
+We'll use xargs to run each brute-force in parallel.
+
+```shell
+$ printf %s\\n {0..9} | xargs -t -n 1 -P 9 -I % php solve_p.php %
+php solve_p.php 0
+# ...
+Solved 8: 37_H
+Solved 3: ER_S
+Solved 5: E_FL
+Solved 4: ECUR
+Solved 0: ENO{
+Solved 6: AG_1
+Solved 1: SOME
+Solved 9: ACK}
+Solved 2: _SUP
+Failed 7
+```
+
+So seed 7 failed! I tried expanding the character set to all of ascii to no avail.
+Again, I eventually found the reason to be that generating permutations doesn't handle duplicate characters.
+Luckily, this is just one seed, and our shortcut cut down each brute-force to a couple of seconds!
+
+Of course, a modification to allow duplicate characters is ideal,
+but I instead decided to throw electricity at the problem...
+
+### Solving with a simple loop
+Let's do a modified brute-force script to try all two billion or so seeds.
+To aid in parallelization, I break the search space apart.
+Of course, I'm just targeting the single flag we haven't brute-forced.
+
+```php
+$threads = 32;
+$target = '7';
+$token = $tokens[$target];
+$block = (int)$argv[1];
+$blocksize = (0xffffffff+1) / 32;
+$start = $blocksize * $block;
+
+$solvedToken = false;
+for ($a = 0; $a < 0xffffffff / $threads; $a++)
+{
+    $seed = $start + $a;
+    mt_srand($seed);
+
+    $success = true;
+    for ($i = 0; $i < strlen($token); $i++)
+    {
+        $num = $translation[$token[$i]];
+        $rand = mt_rand(0, count($tokenchars) - 1);
+
+        if ($num != $rand)
+        {
+            $success = false;
+            break;
+        }
+    }
+
+    if (!$success)
+    {
+        continue;
+    }
+
+    $solvedToken = true;
+    $p = pack('N', $seed);
+    echo "Solved ", $target, ": ", $p, "\n";
+    return;
+}
+
+echo "Failed ", $target, "\n";
+```
+
+On my machine, this took about a minute!
+
+```php
+> printf %s\\n {0..31} | xargs -t -n 1 -P 0 -I % php solve_7.php %
+php solve_7.php 0
+// ...
+Solved 7: 3333
+```
+
+### Final solution and code
+Luckily, our final and 9th flag ends with `}`, so we have the full flag! We just need to assemble:
+
+> ENO\{SOME_SUPER_SECURE_FLAG_1333337_HACK\}
+
+Here's the full code for the permutation approach.
+
+```php
+<?php
+$tokenchars = str_split("abcdefghijklmnopqrstuvwxyz0123456789_-");
+$translation = array();
+foreach ($tokenchars as $i => $c){
+    $translation[$c] = $i;
+}
+
+// https://stackoverflow.com/a/43307800
+// a php translation of python's itertools implementation
+function permutations($pool, $r = null) {
+    $n = count($pool);
+
+    if ($r == null) {
+        $r = $n;
+    }
+
+    if ($r > $n) {
+        return;
+    }
+
+    $indices = range(0, $n - 1);
+    $cycles = range($n, $n - $r + 1, -1); // count down
+
+    yield array_slice($pool, 0, $r);
+
+    if ($n <= 0) {
+        return;
+    }
+
+    while (true) {
+        $exit_early = false;
+        for ($i = $r;$i--;$i >= 0) {
+            $cycles[$i]-= 1;
+            if ($cycles[$i] == 0) {
+                // Push whatever is at index $i to the end, move everything back
+                if ($i < count($indices)) {
+                    $removed = array_splice($indices, $i, 1);
+                    array_push($indices, $removed[0]);
+                }
+                $cycles[$i] = $n - $i;
+            } else {
+                $j = $cycles[$i];
+                // Swap indices $i & -$j.
+                $i_val = $indices[$i];
+                $neg_j_val = $indices[count($indices) - $j];
+                $indices[$i] = $neg_j_val;
+                $indices[count($indices) - $j] = $i_val;
+                $result = [];
+                $counter = 0;
+                foreach ($indices as $indx) {
+                    array_push($result, $pool[$indx]);
+                    $counter++;
+                    if ($counter == $r) break;
+                }
+                yield $result;
+                $exit_early = true;
+                break;
+            }
+        }
+        if (!$exit_early) {
+            break; // Outer while loop
+        }
+    }
+}
+
+function getseed(array $flagpart)
+{
+    return 
+        ($flagpart[0] << 24) |
+        ($flagpart[1] << 16) |
+        ($flagpart[2] << 8) |
+        ($flagpart[3] << 0);
+}
+
+$tokens = [
+    '8bwxvicb2ogv1_3akeawjgpxzh_x-1zxogrg-ze1xdorambake92o27sd9kn4fgbvlw7vm15uw_qbx5ifcrz5ugk8-lgoybttwaw_m_19o2611uom602f19-sy4gk-dslc7tiiorkh1kvjo3aurufnxon8ml58ceuj4d4leyzsxpicikz5pjon5hrfhmyo5v8ud-_0r5p6tcn94lgype692h205tlfo8upoysem52onxn6gj5x81lhbsect0x0kujehsgmbqglydjws8817c7tn9in_l8si2e97qen1k7lf9aepk9qcofm5n9rmuqfswar3rh_j6k0povdq21_9_60fii3wvmebsmmka24une_6r6tlfn_ywql-meyw47b4-wnhr3g0pjlfnlj6cxdka2bzp7j-xybc8dzlwgaepsv2sdm0153eh4uaeum5f4qft91t-nr71t8ys2e2bahnm3o819g83hpwmsyevsh_8cv_ckkqulh10hxf5npmz-rtnzw3kegyu-ngatj-lkqz4xjjfch-qpj870t856-74wom5k042_1fsn34yab7labrlch0bo5eigni1az-r4v695eofu6hy6-ti77l-650m-wwptpbe3xcyggoq6128j5g7zpyzw17as4h1txpozjj5uil1l9f7kp5qzavaitcrqwnruxo36y-0o-p-1dxqixem1-vsgxvz5fi18e6yldwxioyniy42xoq1hf41_ttiy1eatedfb69ebmwk9-nponqejdxvdj4q6xzy2e57fi62wieog5d7vv3cc6btfpwjh5778a7q_uz92tzff2bc46jryvg4upb69o1dc-s1i-5to7vnw0dg7vdmfvdh-9r6y6zazsr04efigi-yt3mu5eahregt-x4k5yie5ko272pvmoqi58rwcl-yb529jbxwndr3qprby-la87byucmmprkk5dj_-bzofyua2dj25x4el4x9u-l8op-3_7a5wqi2',
+    'sc_0nsixk5_mrr8xa5f4hday65tfxxbhx_bc-h282v9cq0v-c7uqmrrvr3dxohraf78i0emwdtkg1dlrpe9p-u9nss_pp4hjw_1suj3q7ptdc53mkyrh2idnlaj0qys5i5l-753macfng3r18cv99spw6w-rfg6kaszppn55ixq08q4kive0jr1l31bipcdx53rf0m5wjtah4fsmm36bive6lw3vt66tioky7h1uyx4_2uvkgi8jzh8sfavfo84hco4t-1oj6a5b536zgyq1g1-i_3tuueqh5zhfba5f2krxwissgpj14s2vwf_d0g4egl8_v3yxd781_w764v_myk8len471xifr4e1r_h5tt52uz6evkt8e2y1sgai5lz-1eruvlz_v6qsstuo77io9vf077hohd43kw9v-9xri6xevebt7zfq620ft6swlskv8bu_3142uomqxjbzlz-6dil14n46l0p06ehf4e91npqv7_nva9sk5gk11yiv_k79224xwkfdt3fmej5udmu1dwgxhuoeu4uzisey_2iplyozm4s_xl5t6hcjgm4ajn348egmaho0-cwz_e3275pb_6iiq0j773qniwgho53b5fuazl1e10ki8kbo8q6r0h7rvo6-irj_o0v7ve5vp-3ku0zlojz1ychhp5bdzlgiqmjre3lap8qljf3i3dav0z_2dj9boh29qo_0uhqczp2myh-8_zkhhlx1vxwbmc65par9wzjmg5dom449cqdcxvxwgcu1vlqj1mombe-px1g6pbbap_e2153qk4yikd46ufwk1dklmsdd_eixmrvy1lq07nci86xa1nmgjgmrawf5-mf8mbpm4hi-fiznzguqm8ttozxxdk7h5lgbp7jonq0eew6m58oyws_h7_44ggc_sgbvy7_oxvtyyds-w9s664afuk_8xlekl_4-txneg6v5jure99mh9z1ee_o2113qdjl8ge6tsx_-d2_-jxl7',
+    'g1c84ou8utwl84j_6i58590s73_sq16pyu4wz2l1c64t5569iw6t111ra--zt5rejece6zekx-jzt4a887e5b-i-nc2m_74jz9m-49zunlb86838s1sd99usztvfrtk7tyvzma_lp9m54mpl-l6o8t-7s841qfqtjms5h7asdx68d358qj092ad7pe273-3f55xl3gkitei6avduldbjwcimk3fd9fbdcl7rh9z5a20oxe3rsenugp5la9e38luvgqgj101rg-in193thfqc6vcb7tg_7bihl6qvi40_j0_1ar9oddvu45fgqe_5zs9aw7q2vpf2ia8vud2g2y5fsx3-ity62xz-2hca5j2s1uuof_4noikn9t9562ow704a62nln2-c3wncc2rn5lp9nj8vp1ju8otvakl61nj2tpqq2yzyho_vq3b1a8qcap7zvz0qowjj2io9r8xbya41dqwyczlfh_krd_lxp3h6euf2t9ghnbxe8_m0_xpy6j-wu2jakvnhdao0p7i37ilrv2n4t-j-of517_zoat8yjk7vtj8qe_3g6b9nm1przgyl0us6h87lp212tz4pqozhmt7bk-gjnybpmc7c9jq3mr7-auj82kv87xi3srfdask7vrldm1pen2olu8oal92871r8cccad917m_7hyisn_lik1-smgvj7ggitl12bra26ziusf1mtczmbd15gab9cg75zljb_36ci8af656r7jymgqrwbe4xxxuxyczct3d4daubln_3kh6u90_htmyrrj3ps4mqq-bfw3i4o57c2ivflas57wews4989w56w7bcilzr2_ascr--21fais7kvilcu1nkoxqa-h731cssy0lu85mkcg-ezkuq7nk456f1924by8e-ghx76h8nl4-nc1uy0wbwg5n2geymxlxn1h2jx7plzab3vyksgyva_xpckwdvqkh1ftp0w_6jgfgdtdsf0dxo0cx02-7bdrawl',
+    '0po4g-sbcvss9qnfkcm65kjz6zp9j32ujl5c9977k74a0s7o0rbn4p1ol9dahyv-9-grbplrw9j_mwjmq581gp2-ozmwv4ci2ufozasv26b3wzj6kqonzdra9hfwvev2a4ir48vw9-6vgj97h6_2ena_l460-7agxencbqs3og4gr8qxia6k7l6x39h8h94d8191hg-rkvd_58aae783ugm7pvtlwaswk14wyj_3yc7xji-ao5t_375y0b0yvem83-5i4hnyx0-9e1fvg5o81ykatzidbr3zef-yhi4td43k90kld0cd--66nlut1-b2rlow_td-grt9g7a53dh3p3x0fgzqfp4xw-q99y1mfl31ui9dx4xhy2bpc_azrwmt-dh7igg33yu32i0ad_-cu7wzt3k6d_1rptt_7e0sigld_6k03-xgv6yf2brp9x_s05yaifnbn-5y0n9a5nzi3yzb0qxpb67bt9-h2p_5z8n-u545mx19c3nshqqmj2h92iz67fdcnknd6w8rhvz5nk20mqmhy3pzrc0s0-d7hhotq50v1i6qaejswsmgt7ennmswlf9raqi3qmttqj98lvcm42j-hlkb7nztxhrq3uws96o-7i3kzf0340ngn9289nenkcgz6ubaaz82wqzz3jjdsh4fl7ufcy-vpggv_u7ojb2qhlhtfe2f187y14u226wx98111lji_8yd67-lwyioq5m9enis9kletlg196426cmlhsxa8hozijztx0t1v4qqyybr8e5c3-tthvp23ldx55xt6mutechs-laiptjcyrkble529-e8563jsrhvb_lbddqywpuvivgcxsd63yf8-94k6vf7ny74m36dvqzwzlhgn0w4d3io3pw6zh5qp964pz84dlzff84imftvqe0hyawv_b1abqyzlmfay3gnin5j7qaatq2rz96btlr867pcc30sm8eg9xqoddhd3nk63yiz1zupyusth_wj',
+    '9fvvmt2mgj7x-n1fu4_piinllkox609ha122fdeb-8urxd6__8f3mchcy1-mvv_lmv0jwv6xlhf3u6sp4vs1ctc-cwet4jjup01ooz34vdrlxnfz7r54bf5ue0up7mpm6sjcmq-1eqedn4offhoors-spl3qovbe6_re-pwhcqhlgadpzy5jwxdkiqr3jjmsz7rue3gsdrvfpbs0v30bb1fl7a2judd11quycb8s0zgsg-82nqu9nvy_5nml6t90p0zgs4k2b9jinf46js1e9frgkklqp7ydtv1emtjuub6kviz9h5b-3cbiyj34aga_xou2cwto882c5c7ec3k7gcxk4vc8-1p5bubhbv1eptsliz1n8qhwo7f5z1my0euilka_slfbwtdp685v5rrep3v3utln1n-our6g_mwvq0g9wn-l3uz3h3mqex2or_dlme6f7pyaw6ym11-rlm0zy6b1flf6pby3jus1f2v6n2pf6hyy0rmots384i94qv-wnk5wgoypfpk3u-muwhwvbw4foznxot6g9dqiow67c4yczj2fcjqnj8zuuuun-b4kbms96gumll1jljtqt3cd9glj6w7kgvsyc81vkhxxdplrfrh18j1t_sm-u8gbytmv5mse9enwudxb_x-5o982drkoyt347f15_g-_97zcu-nz6317jse4hwdtcfd4wbrx7mhrdaik553q9wf4m9mbt4e5zgc2bofpkv386ceop-uh00pzuj12cgnfixgtw7_ehyg_55srvdd7wf1cgz1zflsmaxw8_evyft93oa82lybq8x157sohj3tj8dr7ogrtg_bwijcv7ivjirhp1grxoy2ghm-ear-d6liswceuhtp6cqjs13l8nqdtqycm4ljgw4tlvfh7gndxsipstwxfj53kzx_1w080g8wut-w6nc-ngp92zcrhe4b5kl7g2lt_9-su8r4naz9nvw5-m1g7du16ugbgimnzob58a9ei',
+    'thw9343nszorwv8ckn1dw_mthklympt0z1_j4o1eg-0yvrivd9nxtlr99yqc4c7-1xps0-3f2al24w1lqq8zh26agqnppf4ajy2l6k_hl3-ijal67uhz83xx7t4c_xbnl79ls_2puxsnpfk5wtd1dbbig5a5lplmhle5vsldq7fh41g01fl-wjll5xbf4spnlr-waoqztazn673otp5c6hlkhwvw4q6i9rf7zfn3p-y-h8mwuatcij7pa2jd5jln5pqp92pn0-x4lgbtnaezu5stixwk1at4oef464sg09neshabbze1f60wvyaexlwh2577gq2g7znlr0y91y_xflwq3zn-lsdb1f7whq8r2y89h1hcrvr3l9cdrdzmzja25ss3f6pm2ullp5k39d6z7uiol8vmjmwfxk-1ydirxq45jw07smqohmmrf-162olfaz5dhzd1753-57v7mkkwl60p1pho1l16hoxvhxe2zyumnbizscb5q-97tbjyw5dr1d-n_kg2wqs3ftiu9gm8k6nizrhbu8ip255akm5suld9rtigzgxhh4_pnk9z-rb3x6jxdoxggsyp5ulzaecphhe8dm3xcew44tto2vspzvlfjhmih2xeuuv5m6ae3ebmgulef0-seohpqgd1mqa83h7apcwwq28e0er-x4s6idlffyx32d5dy5y0ahgdcrmjc-25o-f72nihamy3s41jlaokhyjydi7ozjjhaiwr5we60q3l7gbtymrrgws54bhxo4h77p8efmwtbpanmt7eyyzdvyolwp12be54z0ekg5ndi23yfy2bdbkixowh2n_tvk4suuy8shrkfjyn9lz17dijpz-408ah7qgz3a7o5b_91own5z6rmh-q-rzh-crcxb4rw004w98xmt8ksc2e3avuew710eclj7-s3s86agh7qvorzw9sfcf9hcads005piqv9wovdo37csfwper2nyc0n30k6ul4swvpqf97',
+    '8esmqjz4i1gn01-dulpookzbsrayhkuej5ecl44itncptzf0m10iygm3tky8elibnvucuce_jro1bucp5e14x7p7txv1au5ojo60g-ucx19lmumas65082pqykolwam5t661rekjr0qp-cghcmoouzrhte1jn1s16fxbm_a3nkv-y5t7j-j-lcmj6mr4kt4u25e1a1jcmvdvghdn0s8gg2n1_rlmb3babaqh7xf1quustywt_o6eedl_irbp72yo0r3dav3si779ebb3ncuk6fobqqc-9thcy544_yfzgyyu9v2x0h7gnbp3se30wio13e8liix9epfyb27b-lpw4ibr85kly_lvmu3wvh2_htdupiuxas11_h0j0ini-zvmosrubbtwxzwch1sk3qxa1wbeglmhcmgjdrh25zg41odaxtn4j4p7jr1bx-reijji4tjo2_z2s0y6n6bdr7y5y05e5_zjzglkafy0d_wdi7lxw9zgy5ww2fsshdftccl4p8-v_inurh3-e3kj6li0lij5p5d1sv-1w61_jj_yxr0eeo-fbqdhb8aonlinzu0t7tb65lrg42ks5-_d3ahbs0qc6nejmlo6uks22fuq92wzb_-xjcrkdh4fb_aoz144oahz72eymbxrri7zgk4d2rgbkyawed39x6__lx8o0xnnjxl8vr__8s2wcdtz1fkofkyf_3rbmn11imaq36-4zxqy5mjecw8hjcxe3djijx3-a06vfhizgke8l28t3u8wir2jx8ybocnm4d-o-dsk9zy623jl-bgpwxaab52nlurqt_r18yz6_6tte8f73strfi-u12lh8-c8qapiazbm6or526wb7fqo-s3vk6x0inq--ie_8nubmh4azzj9x4-xsklwnnkxx69pi7usg4xxlpuceja3mg-n63a0pu82od7nttmxi_c9x_2l6d6iht1-9nnxsxxovfo9lg-vm46roidnd_vh9y_6-pbza3-r',
+    'd5k28813ss1i_eitqvatanj3p3v5xxzbdvzbl6la00id6w6hxi9bcmvxoxc7lax6gkd2n33791fwrimzskzxx0uurjp3-950ks_77u-v618ab5s_jrvra98n1fz2nu5gst3ws_uv6ojj2v_g9408v97b8y0-8e6ha8ia8ywbbpy19pw--994_ei_venkr216g4j26prm6d00-b9ug67o-ulfbf44b9k50iyk7sndabixbos_zu1ri68uxdvkq7e05ci60if_ma22r29s-xrs9r2j0x_s862mhoxosonfcn7pmpc47ehege8l_knoqmafdhc06oixw41sjgmtj5-vorus1kaqjqqgj71wrfdmv0r6dvs-35ojw7bi_9uchqyxufbhsfbz0bkg63q-lwtgxzvqy979xc-g7acp546fdca6fsnkazqy-al6h14n36t4c80fpub1i35m3f9d65175-9vc318m13cib3lghr7jv8rooi463byy_-q_ercfmkak0406n2iz7dd97ol35fwzz1kj-15hqcfpme2g208n0w32k0vv4k8r3fboptk-_k0f-4ejq51um148yrekbxf9cvkeg1fujlgwaimtzw_n8y1dnw4_c6lh8_6irsdlzavkulc25eh0n5ox4z2amg_rag35z9n6dyc_fe__f0ettav8hxmh2w6dp7o-lp-2s_vt5bgp7eeq7nfm8_l8nxsz4xhcc_ilj90uz89okljya2qyr5v-85crhh3gi7bocud0sdy8zdlze8td0b-xsevzw4lk2-6q84g_t_e5ili5z00rrd7roc4-3q90ca8blttyyrp6knsick63btsh4bf9pao9bxqrb2m7idi1hlbsmp5l-n3pfdwkmw37l1_8iu53v3sszhp7dta7vuw48bgiujkiqwbb6ywraw_6_qohlp8wm42unch4d9c3i976pq2evpt0dcj3qzcgng16da4u8s0ejr6klra584ns-p9',
+    'u78grj0cjwuogn8-utrqg5j_b2pvgd3fl6-6up9-bs0cft0bw-7_zwa7sr2xdbjh7utiing8b-cafzm9yxurm6eyn6gpba3nmuv457vafcdsfr9lipsdlo-qaty3gzmzuyu_4haeeewqa9zkxx5lj23d5iuf6xz-0walxmwwzfej4gq9zw3ta2ogpl3f7lh_qzd26db8b-_zwdyyspk20qklo-rne26cq96o3at8lq45n8rdyr-wsx8yr_x4d4g6nx5ll-729w7gm7m80ddzx6b9v-q58fg2t51m-to9uwwzv1c5yvzhhvo7w-x89f8uqzw_i7hjttd5__9ihmi91pn1j6_p6hon29rl1wm49nwwp_j6h9yq87cerq8tzd1jtt6254-_p02wi0b7nt3ozvof00myn4pz4y29mfka9bau5nc2fbwlnmvs4y3383b4_rey50jxd5sxli90qg945fa3iqgmz3jjq47_fj5zooypd1-d_h_s01eckz2t3mu3315etbhfy1rappjq_ko82yd39i7742_kfkzehkcpko49r3kdryr9x9n2oo-lpzlep5ur6t4j1o4prajjl82q7-o95wd2i4phoqyrc53dx3mwa4sn-v0lcn4npdhucnu4i5_e8iqkukfrwa616trxqn3jjfb3t7axda-tlkng5-yietkngvls1-vu09n75c15jnjmhskz9op-9hymiqt6ap4f0ut-knqoh648zfj2bwh6ap9lt0hvu_ix1z67cgnq4_x9q87v_wphuy86qidh_e8g3ue8k12cchv-j2efnni8ebnp1uheiv4-m7z38c9kbu20nreomd2gq4hln_-k2rr-yie9b8r_wuypy7f8kys46n5zontbrqhb9m3hv6cim_m7tlo2tcwpsrxpn_u90-1n_7rxe5sn4ttn4wo-986y5he0fs19tsxt7y3z5qqel1prr-s7z777s0o7bq97-us099ykj_vjg7_hy_b-',
+    'a-jtqk69cbq5k2n1asouw_-c01e3q2o7kecbeg2_k1psqvqj9b2htoojg5s4o4sqbbz43onpib60am4jjbjzig6yw5nexm4c3dycn9ntoda1tsn_xl0swl_h3eww1retewksr9qyz1vhe8v-cyi2txn319-fancgqy0dnipm4069vpwwwdbyrayobopk3u0ivs8gb421xkt6nmktb7-d16_ospqq0wmsmpltenk_zsov80gs9dany5c4krv5fn3hk7of4fcgcn8xezbkf078bv3hn3046qstk0bsc36p39m-120s44pl9ggibpor1kau1k_jhuhaad7ckpjibkd9x_q0pckshxsm-9t8oox4p52-bbwid77ixyw9susgtjid-cv7kac5rtiuux73ckt88qf21eg3s3custo6_o25y8w709qfguzzddl7wfd0_vjucjm6qcwtzwg4i15_qshz4x74d-rxi05bc7dpn9x9_a2oppxpjs6j6jmik_niltmqlb586kw-xcbma62x1vd08_0-m055k1uzm82z_tat9mw7nogzhqmf0ib6_6uttaeuqkzfrd8mm5qpvsrwjagf87jkhlg2p52dlwp5fwxjhoya8ensjpe3q-g2a1rq-n8wmziqa9vklxmjinm27mo512hnzvxzytqb0hejnjt8122gxf0xlpwzkmt8z2lfcwkvjjy-5xfp516gmg1ybmk4c1wzh5p4oqkvf6v5tunb2p3id8c_mpsjfmpufmteaq7ty83xa6ggrtm7jgu55n6lu-ejthx-_ont4imfrrohshk7bse9m1h1fosssayzh7qj338kevwr8u24jwtf1qo0v_l7hj03c6i93v-9q7bb6gfx3ymtbjr-lwf9g2utha37spum9y04nz03uwq5s9_roil8zv68d6oczfkhe3dlhvq_0x8lhgearklcx2936x_lhtbph7_uprmte9gtqtcow64xdjphlx0t9n8vqgst',
+];
+
+$charset =  ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0', 'Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P', 'A', 'S', 'D', 'F', 'G', 'H', 'J', 'K', 'L', 'Z', 'X', 'C', 'V', 'B', 'N', 'M', '_', '?', '{', '}'];
+foreach ($charset as $i => $c)
+{
+    $charset[$i] = ord($c);
+}
+
+$target = $argv[1];
+$token = $tokens[$target];
+
+$solvedToken = false;
+foreach (permutations($charset, 4) as $flagpart)
+{
+    $seed = getseed($flagpart);
+    mt_srand($seed);
+    $p = pack('N', $seed);
+
+    $success = true;
+    for ($i = 0; $i < strlen($token); $i++)
+    {
+        $num = $translation[$token[$i]];
+        $rand = mt_rand(0, count($tokenchars) - 1);
+
+        if ($num != $rand)
+        {
+            $success = false;
+            break;
+        }
+    }
+
+    if (!$success)
+    {
+        continue;
+    }
+
+    $solvedToken = true;
+    echo "Solved ", $target, ": ", $p, "\n";
+    return;
+}
+
+echo "Failed ", $target, "\n";
+```
+
+Replace the bottom part of the script to do a full brute-force. Be sure to pick an appropriate `$threads` value.
+
+```php
+$threads = 32;
+$target = '7';
+$token = $tokens[$target];
+$block = (int)$argv[1];
+$blocksize = (0xffffffff+1) / 32;
+$start = $blocksize * $block;
+
+$solvedToken = false;
+for ($a = 0; $a < 0xffffffff / $threads; $a++)
+{
+    $seed = $start + $a;
+    mt_srand($seed);
+
+    $success = true;
+    for ($i = 0; $i < strlen($token); $i++)
+    {
+        $num = $translation[$token[$i]];
+        $rand = mt_rand(0, count($tokenchars) - 1);
+
+        if ($num != $rand)
+        {
+            $success = false;
+            break;
+        }
+    }
+
+    if (!$success)
+    {
+        continue;
+    }
+
+    $solvedToken = true;
+    $p = pack('N', $seed);
+    echo "Solved ", $target, ": ", $p, "\n";
+    return;
+}
+
+echo "Failed ", $target, "\n";
+```
