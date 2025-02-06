@@ -1,0 +1,207 @@
+---
+title: 'HackIM Goa CTF 2025 - ZONEy'
+description: 'Are you ZONEy.eno out or can you find the flag?'
+pubDate: '2025-02-06T16:00:55Z'
+cover: 'header.png'
+---
+
+## Challenge
+import { Image } from 'astro:assets';
+
+import challenge from 'challenge.png'
+import multiselect from 'multiselect.png'
+
+Here's what the challenge looks like:  
+<Image src={challenge} alt='The screenshot of the challenge showing a UDP ip-port' />
+
+A quick connect via `netcat` shows no output.
+Typing some characters and Enter *does* return some characters, but nothing legible.
+
+UDP... ZONE... DNS?
+
+Yep! Unfortunately, the server has been shut down, so I can't provide sample output.
+
+## Solution
+I figured out DNS pretty quickly, so that wasn't a problem.
+Still, I spent way more time on this challenge than I should have trying to find the flag.
+
+We can use `dig` to explore the DNS server.
+Some of the first records to try are `SOA`, `AFXR`, and `IFXR`.
+The latter two are for "zone transfers", typically to a secondary DNS server from a primary DNS server.
+They basically dump all of the zone data and are restricted to specific DNS servers.
+
+Since the challenge's DNS server is down, here's a quick demo on my personal DNS server.
+
+```shell
+❯ dig redacted SOA
+
+; <<>> DiG 9.20.5 <<>> redacted SOA
+;; global options: +cmd
+;; Got answer:
+;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 25791
+;; flags: qr rd ra; QUERY: 1, ANSWER: 1, AUTHORITY: 0, ADDITIONAL: 1
+
+;; OPT PSEUDOSECTION:
+; EDNS: version: 0, flags:; udp: 65494
+;; QUESTION SECTION:
+;redacted.                           IN      SOA
+
+;; ANSWER SECTION:
+redacted.                    86400   IN      SOA     redacted. redacted. 2024102917 86400 7200 3600000 172800
+
+;; Query time: 1 msec
+;; SERVER: 127.0.0.53#53(127.0.0.53) (UDP)
+;; WHEN: Thu Feb 06 07:52:48 PST 2025
+;; MSG SIZE  rcvd: 88
+
+❯ dig AXFR redacted
+; <<>> DiG 9.20.5 <<>> AXFR redacted
+;; global options: +cmd
+; Transfer failed.
+
+# no good output for ifxr
+```
+
+A quick note that the SOA record for the challenge's DNS server mentioned `webmaster.ZONEy.eno`,
+but this never lead anywhere.
+
+First, fun fact: in Firefox, you can hold down `Ctrl` to select cells of a table, then drag to multi-select.
+Do this on [the Wikipedia page for DNS resource records](https://en.wikipedia.org/wiki/List_of_DNS_record_types),
+and you can easily generate a list.
+
+<Image src={multiselect} alt='Multiselecting table cells in Firefox' />
+
+```
+A
+AAAA
+AFSDB
+APL
+CAA
+CDNSKEY
+CDS
+CERT
+CNAME
+CSYNC
+DHCID
+DLV
+DNAME
+DNSKEY
+DS
+EUI48
+EUI64
+HINFO
+HIP
+HTTPS
+IPSECKEY
+KEY
+KX
+LOC
+MX
+NAPTR
+NS
+NSEC
+NSEC3
+NSEC3PARAM
+OPENPGPKEY
+PTR
+RP
+RRSIG
+SIG
+SMIMEA
+SOA
+SRV
+SSHFP
+SVCB
+TA
+TKEY
+TLSA
+TSIG
+TXT
+URI
+ZONEMD
+'*'
+AXFR
+IXFR
+OPT
+MD
+MF
+MAILA
+MB
+MG
+MR
+MINFO
+MAILB
+WKS
+NB
+NBSTAT
+NULL
+A6
+NXT
+KEY
+SIG
+HINFO
+RP
+X25
+ISDN
+RT
+NSAP
+NSAP-PTR
+PX
+EID
+NIMLOC
+ATMA
+APL
+SINK
+GPOS
+UINFO
+UID
+GID
+UNSPEC
+SPF
+NINFO
+RKEY
+TALINK
+NID
+L32
+L64
+LP
+DOA
+```
+
+We can generate `dig` commands to explore what records are available.
+
+```shell
+dig @52.59.124.14 -p 5007 ZONEy.eno A +short
+dig @52.59.124.14 -p 5007 ZONEy.eno AAAA +short
+dig @52.59.124.14 -p 5007 ZONEy.eno AFSDB +short
+dig @52.59.124.14 -p 5007 ZONEy.eno APL +short
+dig @52.59.124.14 -p 5007 ZONEy.eno CAA +short
+# ...
+```
+
+The first hit we get (aside from the dead-end SOA record) is an MX record.
+
+```shell
+❯ dig @52.59.124.14 -p 5007 ZONEy.eno MX +short
+10 challenge.ZONEy.eno.
+```
+
+Followed by DNSSEC's NSEC and RRSIG records. Here's one:
+```shell
+❯ dig @52.59.124.14 -p 5007 challenge.zoney.eno NSEC +short
+hereisthe1337flag.zoney.eno. A RRSIG NSEC
+```
+
+This isn't actually the flag, incidentally. Let's go deeper.
+```shell
+❯ dig @52.59.124.14 -p 5007 hereisthe1337flag.zoney.eno NSEC +short
+ns1.zoney.eno. A TXT RRSIG NSEC
+```
+
+This time, we get an additional TXT record. Let's take a look.
+```shell
+❯ dig @52.59.124.14 -p 5007 hereisthe1337flag.zoney.eno TXT +short
+"ENO{1337_Fl4G_NSeC_W4LK3R}"
+```
+
+The flag!
