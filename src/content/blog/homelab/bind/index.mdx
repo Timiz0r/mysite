@@ -1,0 +1,433 @@
+---
+title: 'Home DNS with BIND -- plus adblocking!'
+description: 'RIP Pi-hole?'
+pubDate: '2025-02-20T01:10:16Z'
+cover: './header.png'
+---
+
+## The background
+
+### The outage
+Back in late October of 2024, I basically took down my home network's services due to a DNS outage.
+You see, on the machine running my DNS and DHCP server, I decided to switch from `networkd` to `NetworkManager`.
+Unfortunately, I didn't set the connection to autoconnect, so, upon reboot, no network, no DHCP/DNS!
+Additionally, since this server is a Raspberry Pi Zero 2 W,
+recovery would involve editing the configuration off the SD card.
+I didn't have a microSD card reader handy, hence the outage.
+
+### Pi-hole
+At the time, I was running Pi-hole as my DHCP and DNS solution.
+I had a few features I enjoyed:
+* DNS block lists for ads/malware
+* Pause button for DNS blocking
+* DHCP static leases, with hostnames that resolve DNS-side
+* User-provided DNS records (A and CNAME)
+* Easy to configure via UI
+
+Pi-hole uses `dnsmasq` for its DHCP and DNS needs.
+The configuration done in the Pi-hole UI results in corresponding dnsmasq configuration.
+
+The problems:
+* If it goes down, no backup.
+  * Well, I could have done automated backups.
+* Even with backups, still not exactly seamless to redeploy and restore.
+* No DNS or DHCP failover to a backup Pi-hole instance I had running.
+
+To keep such an outage from happening again, I needed a solution that addressed these problems,
+without losing out on the features I enjoyed.
+
+### My homelab
+Final bit of background -- my homelab!
+* Ansible for automation
+  * So adding or changing/configuration services is done by editing their configurations and Ansible inventories, and running Ansible playbooks.
+* A local Forgeho instance for git, hosting Ansible configurations
+* Semaphore UI for manual and automated running of playbooks
+* Docker (compose) for defining services
+* Network shares for persistent storage of services' data (specifically ZFS datasets and NFS shares)
+
+## The plan
+BIND for DNS and Kea for DHCP! Though Kea is for another post.
+
+[BIND](https://bind9.readthedocs.io/en/latest/index.html) is the definitive DNS server,
+so going with it, if it fit the bill, seemed like a good idea!
+
+BIND is entirely configured via configuration files.
+These can be kept in source control and easily deployed wherever needed.
+This covers ease of configuration, backups, and, of course, user-provided records.
+
+[Kea can synchronize DHCP leases to DNS servers.](https://kea.readthedocs.io/en/latest/arm/ddns.html)
+Though, at least for the forseeable future, I decided to not do this.
+I have no need to resolve dynamic leases, and keeping static leases and A records in sync across two files is easy enough.
+This covers, though manually in my case, resolving static leases.
+
+BIND has a feature called [Response Policy Zone rewriting](https://bind9.readthedocs.io/en/latest/reference.html#response-policy-zone-rpz-rewriting)
+that can accomplish the DNS blocking feature. We have to do the legwork of providing our own blocklist, though.
+
+Indeed, BIND seems to fit all of my requirements!
+
+## The implementation
+Of course, this will all be very specific to my needs and homelab, but hopefully it's useful to others!
+
+### BIND and Docker
+The main image one would use is [the official `internetsystemsconsortium/bind9` image](https://hub.docker.com/r/internetsystemsconsortium/bind9).
+However, since I use low-powered ARM SBCs for my DNS and DHCP servers, I can't use this image, as it only supports amd64.
+
+Luckily, Canonical has [the `ubuntu/bind9` image](https://hub.docker.com/r/ubuntu/bind9), which supports arm64!
+The only additional hiccup was that one of my SBCs with only 512MB of memory was running a 32-bit OS,
+so I had to reimage to a 64-bit version -- further adding to downtime.
+
+#### Docker Compose
+Here's my `docker-compose`:
+```yaml
+version: '3'
+services:
+  bind:
+    image: ubuntu/bind9:9.18-22.04_beta
+    restart: unless-stopped
+    entrypoint:
+      - /bin/bash
+      - -c
+      - |
+        useradd -u 3001 someuser || echo User someuser exists;
+        rndc-confgen -a
+        chown someuser:someuser /etc/bind/rndc.key
+        chown someuser:someuser /var/cache/bind
+        /usr/local/bin/docker-entrypoint.sh
+    ports:
+      - 53:53/udp
+      - 53:53/tcp
+    environment:
+      - TZ=UTC
+      - BIND9_USER=someuser
+    volumes:
+      - /home/someuser/deploy/services/bind/config:/etc/bind
+      - /home/someuser/deploy/config/bind:/deployedconfigs
+```
+
+I overwrote the image's entrypoint to get a few things working in my case.
+* For NFS permissions reasons, I need BIND to run under a specific UID/GID
+* To update the DNS block list,
+  we'll use [rndc](https://bind9.readthedocs.io/en/latest/manpages.html#man-rndc) to configure BIND at runtime.
+  This requires generating a key (that will only be used locally, incidentally).
+
+As for the volumes, `/etc/bind` contains BIND's configurations as one would expect.
+`/deployedconfigs` is how we'll provide an updated DNS blocklist.
+
+Otherwise, the rest should be relatively self-explanatory.
+
+### Configuring BIND
+Be sure to view [the](https://bind9.readthedocs.io/en/latest/chapter3.html)
+[documentation](https://bind9.readthedocs.io/en/latest/reference.html) for full configuration details!
+
+Let's start with `named.conf`.
+```
+include "/etc/bind/named.conf.options";
+include "/etc/bind/named.conf.local";
+
+include "/etc/bind/rndc.key";
+controls {
+      inet 127.0.0.1 port 953 allow { 127.0.0.1; } keys { "rndc-key"; };
+};
+```
+
+Note that the final include and controls block are for remote configuration of BIND,
+which we'll use for updating the DNS blocklist at runtime.
+The key is generated in our modified `docker-compose` entrypoint via `rndc-confgen -a`.
+We'll run `rndc` via `docker exec`, so we only need localhost access.
+
+As for `named.conf.options`:
+```
+acl "acl_trusted_clients" {
+	192.168.0.0/16; //this probably doesnt get hit due to bridge, so, if we cared, we could use macvlan or whatever
+	172.0.0.0/8; //docker ranges
+};
+
+options {
+	directory "/var/cache/bind";
+
+	forwarders {
+		8.8.8.8;
+		8.8.4.4;
+	};
+
+	//========================================================================
+	// If BIND logs error messages about the root key being expired,
+	// you will need to update your keys.  See https://www.isc.org/bind-keys
+	//========================================================================
+	dnssec-validation auto;
+	version "bruh";
+
+	allow-query {
+		acl_trusted_clients;
+	};
+
+	allow-query-cache {
+		acl_trusted_clients;
+	};
+
+	allow-recursion {
+		acl_trusted_clients;
+	};
+
+	include "/deployedconfigs/adblock_config";
+};
+```
+
+This should be mostly self-explanatory. The only peculiar part is the `adblock_config` include.
+This is done as an include to allow for temporarily disabling DNS blocking. As a sneak-peek, it looks like this:
+```
+response-policy {
+	zone "adblock";
+};
+```
+
+Next, `named.conf.local`:
+```
+zone "mydomain" {
+    type master;
+    file "/etc/bind/zones/mydomain.zone";
+};
+
+zone "adblock" {
+    type master;
+    check-names ignore;
+    file "/deployedconfigs/adblock.rpz";
+    allow-query { none; };
+};
+```
+
+This should be pretty self-explanatory, aside form the contents of the zone files.
+Actually, it's worth noting the blocklist we'll use has domains containing technically illegal characters (underscore? can't remember).
+This would normally cause BIND to fail to run, but we can relax the requirements with `check-names ignore;`.
+
+#### Main zone file
+Again, [the documentation](https://bind9.readthedocs.io/en/latest/chapter3.html#example-com-base-zone-file)!
+
+Here's, more or less, my main zone file.
+```
+$TTL	1d
+$ORIGIN	mydomain.
+
+@						IN	SOA		dns2 mail.stub (
+									2024102917	; Serial
+									1d			; Refresh
+									2h			; Retry
+									1000h		; Expire
+									2d			; Minimum
+									)
+						IN	NS		dns2	; primary
+						IN	NS		dns1	; secondary
+
+dns2					IN	A		192.168.1.2
+dns1					IN	A		192.168.1.3
+
+; hosts that get reverse-proxied
+dns1-secure			5m	IN	CNAME	portal
+dns2-secure			5m	IN	CNAME	portal
+food				5m	IN	CNAME	portal
+; ... etc
+
+; static leases or manually configured IPs
+switch				5m	IN	A		192.168.1.4
+vpn					5m	IN	A		192.168.1.200
+nas					5m	IN	A		192.168.1.201
+router				5m	IN	A		192.168.1.1
+; ... etc
+```
+
+Again, all pretty self-explanatory, especially if one runs DiG with any frequency.
+Of course, as a full-fledged DNS server, any records can be configured.
+
+As for the DNS blocklist zone file, we'll generate it later, but it looks something like this:
+```
+$TTL 1d
+$ORIGIN adblock.
+@ IN SOA @ mail.stub (
+        2025022000 ; Serial
+        1d         ; Refresh
+        2h         ; Retry
+        1000h      ; Expire
+        2d         ; Minimum
+        )
+  IN NS dns2.mydomain.
+
+ad-assets.futurecdn.net IN A 0.0.0.0
+ad-assets.futurecdn.net IN AAAA ::
+ck.getcookiestxt.com IN A 0.0.0.0
+ck.getcookiestxt.com IN AAAA ::
+eu1.clevertap-prod.com IN A 0.0.0.0
+eu1.clevertap-prod.com IN AAAA ::
+wizhumpgyros.com IN A 0.0.0.0
+wizhumpgyros.com IN AAAA ::
+coccyxwickimp.com IN A 0.0.0.0
+coccyxwickimp.com IN AAAA ::
+```
+
+According to past research, versus simply NXDOMAINing lookups, 0.0.0.0 tends to work better. 🤷
+
+### Automatically updating DNS blocklist
+Here's my Ansible runbook, more or less.
+
+```yaml
+- name: Generate rpz file
+  hosts: localhost
+  tasks:
+    - name: Create temp file
+      ansible.builtin.tempfile:
+        state: file
+        prefix: adblock.
+        suffix: .rpz
+      register: temp_file
+    - name: Generate rpz entries
+      ansible.builtin.copy:
+        dest: '{{ temp_file.path }}'
+        mode: u=r,g=r,o=r
+        content: |
+          $TTL 1d
+          $ORIGIN adblock.
+          @ IN SOA @ mail.stub (
+                  {{ '%Y%m%d%H' | strftime(second=ansible_date_time.epoch, utc=True) }} ; Serial
+                  1d         ; Refresh
+                  2h         ; Retry
+                  1000h      ; Expire
+                  2d         ; Minimum
+                  )
+            IN NS dns2.mydomain.
+
+          {% set hosts =
+            lookup('ansible.builtin.url', 'https://raw.githubusercontent.com/StevenBlack/hosts/refs/heads/master/hosts', wantlist=True)
+            | select('regex', '^0.0.0.0')
+            | map('regex_search', '^[^ ]+ ([^ ]+)$', '\\1')
+            | flatten
+            | unique
+            | reject('eq', '0.0.0.0')
+          %}
+          {% for host in hosts %}
+          {{ host | regex_replace('(.+)', '\1 IN A 0.0.0.0') }}
+          {{ host | regex_replace('(.+)', '\1 IN AAAA ::') }}
+          {% endfor %}
+
+- name: Apply rpz file to host
+  hosts: dns
+  tasks:
+    - name: Ensure folder exists
+      ansible.builtin.file:
+        path: ~/deploy/config/bind/
+        state: directory
+        mode: u=rwx
+    - name: Copy rpz file to host
+      ansible.builtin.copy:
+        src: '{{ hostvars.localhost.temp_file.path }}'
+        dest: ~/deploy/config/bind/adblock.rpz
+        mode: u=r,g=r,o=r
+    - name: Force update adblock_config
+      ignore_unreachable: true
+      ansible.builtin.copy:
+        dest: ~/deploy/config/bind/adblock_config
+        mode: u=r,g=r,o=r
+        content: |
+          response-policy {
+            zone "adblock";
+          };
+        # originally was false in order to allow other workflows full control
+        # made it true just in case such a workflow fails and leaves adblock off
+        force: true
+    - name: Refresh bind
+      ignore_unreachable: true
+      community.docker.docker_container_exec:
+        container: services-bind-1
+        argv:
+          - rndc
+          - reload
+          # - adblock # no longer picking adblock zone specifically, since we might be changing response-policy, as well
+
+```
+
+There are plenty of resource online for turning such lists into zone files.
+This one is custom made by yours truly to work natively in Ansible with the power of Jinja templates!
+
+After we generate the file, we mainly just copy it to each host and run `rndc reload`.
+
+In order to temporarily disable DNS blocking,
+we have that additional `include "/deployedconfigs/adblock_config";` from before.
+When DNS blocking is enabled, the `response-policy` block will be present.
+When disabled, it'll be removed (or commented out).
+
+BIND does not watch files for updates and requires external signals like rndc commands (or zone transfers) to update at runtime.
+This is why we run `rndc reload` at the end. Since we use Docker, `docker exec` is the easiest way to run it.
+
+The only othe behavior of consequence is that we force DNS blocking back on when we update the blocklist.
+This doesn't *have* to be done, but doing it helps in case we fail to enable it after temporarily disabling it.
+
+I have this runbook added to Semaphore UI, scheduled to run every few hours.
+
+### Temporarily disabling DNS blocklist
+It looks something like this:
+```yaml
+- name: Temporarily disable adbock
+  hosts: dns
+  ignore_errors: true
+  ignore_unreachable: true
+  tasks:
+    - name: Disable adblock via config
+      ansible.builtin.copy:
+        dest: ~/deploy/config/bind/adblock_config
+        mode: u=r,g=r,o=r
+        content: |
+          // response-policy {
+          //   zone "adblock";
+          // };
+    - name: Refresh bind
+      community.docker.docker_container_exec:
+        container: services-bind-1
+        argv:
+          - rndc
+          - reload
+
+- name: Wait
+  hosts: localhost
+  tasks:
+    - name: Wait
+      ansible.builtin.pause:
+        minutes: '{{ disable_minutes | default(1) }}'
+
+- name: Enable adbock
+  hosts: dns
+  ignore_errors: true
+  ignore_unreachable: true
+  tasks:
+    - name: Enable adblock via config
+      ansible.builtin.copy:
+        dest: ~/deploy/config/bind/adblock_config
+        mode: u=r,g=r,o=r
+        content: |
+          response-policy {
+            zone "adblock";
+          };
+    - name: Refresh bind
+      community.docker.docker_container_exec:
+        container: services-bind-1
+        argv:
+          - rndc
+          - reload
+```
+
+Pretty self-explanatory (well, along with the prior explanation)!
+
+The excessive use of `ignore_errors` and `ignore_unreachable` is to reduce the chance that we leave DNS blocking disabled due to some transient error.
+
+I have this runbook added to Semaphore UI, and I need only click a couple buttons to temporarily disable DNS blocking on my network.
+
+### Secondary DNS server
+BIND *does* have [the concept of primary-secondary authoritative name servers](https://bind9.readthedocs.io/en/latest/chapter3.html#authoritative-name-servers).
+We don't need this, however. We don't need to use zone transfers to keep separate servers synchronized.
+Instead, since we use static configs, we just need to deploy another instance of BIND somewhere else. Bam no problem!
+
+### The end
+The end! Basically!
+
+Of course, there's the matter of configuring DHCP to advertise both DNS servers.
+
+And there's the future post about setting up Kea for home DHCP.
+
+For now, we've at least got a functioning DNS server!
