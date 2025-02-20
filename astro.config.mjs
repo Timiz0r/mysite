@@ -3,6 +3,7 @@ import { defineConfig } from 'astro/config';
 import mdx from '@astrojs/mdx';
 import sitemap from '@astrojs/sitemap';
 import { remarkModifiedTime } from './remark.mjs';
+import rehypeExternalLinks from 'rehype-external-links'
 
 import react from '@astrojs/react';
 import tailwind from '@astrojs/tailwind';
@@ -28,5 +29,14 @@ export default defineConfig({
   },
   markdown: {
     remarkPlugins: [remarkModifiedTime],
+    rehypePlugins: [
+      [
+        rehypeExternalLinks,
+        {
+          content: { type: 'text', value: ' 🔗' },
+          rel: ['nofollow']
+        }
+      ]
+    ],
   },
 });
