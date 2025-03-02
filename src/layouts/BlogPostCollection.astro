@@ -13,7 +13,8 @@ const { posts } = Astro.props;
 
 <Layout title="Blog">
   <section>
-    <ul class="flex flex-wrap gap-8 list-none">
+    <!-- TODO: try a flexbox with gap -->
+    <ul class="flex flex-wrap gap-8 list-none justify-between">
       {
         posts
           .sort((a, b) => b.data.pubDate.valueOf() - a.data.pubDate.valueOf())
