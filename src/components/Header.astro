@@ -1,7 +1,11 @@
 ---
-import HeaderLink from "./HeaderLink.astro";
 import { SITE_TITLE } from "../consts";
 import { DarkModeToggle } from "@/components/DarkModeToggle";
+
+import { Navigation } from "@/components/Navigation";
+
+
+const pathname = Astro.url.pathname.replace(import.meta.env.BASE_URL, "/");
 ---
 
 <header
@@ -12,11 +16,15 @@ import { DarkModeToggle } from "@/components/DarkModeToggle";
       <h2 class="text-2xl font-bold">{SITE_TITLE}</h2>
       <h3 class="text-lg italic text-muted-foreground">今日は today</h3>
     </a>
-    <div class="flex justify-center space-x-4 text-xl">
+    <!-- <div class="flex justify-center space-x-4 text-xl">
       <HeaderLink href="/">Home</HeaderLink>
       <HeaderLink href="/blog">Blog</HeaderLink>
       <HeaderLink href="/about">About</HeaderLink>
-    </div>
+    </div> -->
+
+
+    <Navigation currentPath={pathname} client:load />
+
     <div class="flex space-x-4 justify-self-end">
       <div class="pr-4">
         <DarkModeToggle client:load />
