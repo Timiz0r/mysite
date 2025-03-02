@@ -5,90 +5,90 @@
 /* TODO: prose theming presumably isn't synced to shadcn theming. probably want to. */
 
 @layer base {
-	:root {
-		/* https://zippystarter.com/tools/shadcn-ui-theme-generator probably #22d3ee */
-		--background: 187.9 100% 95%;
-		--foreground: 187.9 5% 10%;
-		--card: 187.9 50% 90%;
-		--card-foreground: 187.9 5% 15%;
-		--popover: 187.9 100% 95%;
-		--popover-foreground: 187.9 100% 10%;
-		--primary: 187.9 85.7% 53.3%;
-		--primary-foreground: 0 0% 100%;
-		--secondary: 187.9 30% 70%;
-		--secondary-foreground: 0 0% 0%;
-		--muted: 180 30% 95%;
-		--muted-foreground: 218 5% 40%;
-		--accent: 194 30% 90%;
-		--accent-foreground: 232 5% 15%;
-		--destructive: 0 100% 30%;
-		--destructive-foreground: 187.9 5% 90%;
-		--border: 218 30% 82%;
-		--input: 187.9 30% 26%;
-		--ring: 187.9 85.7% 53.3%;
-		--radius: 0.5rem;
+  :root {
+    /* https://zippystarter.com/tools/shadcn-ui-theme-generator probably #22d3ee */
+    --background: 187.9 100% 95%;
+    --foreground: 187.9 5% 10%;
+    --card: 187.9 50% 90%;
+    --card-foreground: 187.9 5% 15%;
+    --popover: 187.9 100% 95%;
+    --popover-foreground: 187.9 100% 10%;
+    --primary: 187.9 85.7% 53.3%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 187.9 30% 70%;
+    --secondary-foreground: 0 0% 0%;
+    --muted: 180 30% 95%;
+    --muted-foreground: 218 5% 40%;
+    --accent: 194 30% 90%;
+    --accent-foreground: 232 5% 15%;
+    --destructive: 0 100% 30%;
+    --destructive-foreground: 187.9 5% 90%;
+    --border: 218 30% 82%;
+    --input: 187.9 30% 26%;
+    --ring: 187.9 85.7% 53.3%;
+    --radius: 0.5rem;
 
-		--chart-1: 12 76% 61%;
-		--chart-2: 173 58% 39%;
-		--chart-3: 197 37% 24%;
-		--chart-4: 43 74% 66%;
-		--chart-5: 27 87% 67%;
+    --chart-1: 12 76% 61%;
+    --chart-2: 173 58% 39%;
+    --chart-3: 197 37% 24%;
+    --chart-4: 43 74% 66%;
+    --chart-5: 27 87% 67%;
 
-		--radius: 0.5rem;
+    --radius: 0.5rem;
 
-		--boxshadow: 0 0 90%;
-	}
+    --boxshadow: 0 0 90%;
+  }
 
-	.dark {
-		/* Name: custom color palette
+  .dark {
+    /* Name: custom color palette
        Author: Ilias Ism
        URL: https://gradient.page */
 
-		--background: 200 65% 4.56%;
-		--foreground: 200 10% 97.85%;
+    --background: 200 65% 4.56%;
+    --foreground: 200 10% 97.85%;
 
-		--muted: 200 50% 17.099999999999998%;
-		--muted-foreground: 200 10% 55.7%;
+    --muted: 200 50% 17.099999999999998%;
+    --muted-foreground: 200 10% 55.7%;
 
-		--popover: 200 45% 7.409999999999999%;
-		--popover-foreground: 200 10% 97.85%;
+    --popover: 200 45% 7.409999999999999%;
+    --popover-foreground: 200 10% 97.85%;
 
-		--card: 200 45% 7.409999999999999%;
-		--card-foreground: 200 10% 97.85%;
+    --card: 200 45% 7.409999999999999%;
+    --card-foreground: 200 10% 97.85%;
 
-		--border: 200 50% 17.099999999999998%;
-		--input: 200 50% 17.099999999999998%;
+    --border: 200 50% 17.099999999999998%;
+    --input: 200 50% 17.099999999999998%;
 
-		--primary: 200 100% 57%;
-		--primary-foreground: 200 10% 5.699999999999999%;
+    --primary: 200 100% 57%;
+    --primary-foreground: 200 10% 5.699999999999999%;
 
-		--secondary: 200 50% 17.099999999999998%;
-		--secondary-foreground: 200 10% 97.85%;
+    --secondary: 200 50% 17.099999999999998%;
+    --secondary-foreground: 200 10% 97.85%;
 
-		--accent: 200 50% 17.099999999999998%;
-		--accent-foreground: 200 10% 97.85%;
+    --accent: 200 50% 17.099999999999998%;
+    --accent-foreground: 200 10% 97.85%;
 
-		--destructive: 0 62.8% 30.6%;
-		--destructive-foreground: 200 10% 97.85%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 200 10% 97.85%;
 
-		--ring: 200 100% 57%;
+    --ring: 200 100% 57%;
 
-		--chart-1: 220 70% 50%;
-		--chart-2: 160 60% 45%;
-		--chart-3: 30 80% 55%;
-		--chart-4: 280 65% 60%;
-		--chart-5: 340 75% 55%;
+    --chart-1: 220 70% 50%;
+    --chart-2: 160 60% 45%;
+    --chart-3: 30 80% 55%;
+    --chart-4: 280 65% 60%;
+    --chart-5: 340 75% 55%;
 
-		--boxshadow: 0 0 6%;
-	}
+    --boxshadow: 0 0 6%;
+  }
 }
 
 @layer base {
-	* {
-		@apply border-border;
-	}
+  * {
+    @apply border-border;
+  }
 
-	body {
-		@apply bg-background text-foreground;
-	}
+  body {
+    @apply bg-background text-foreground;
+  }
 }

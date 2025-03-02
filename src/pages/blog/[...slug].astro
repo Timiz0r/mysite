@@ -1,20 +1,20 @@
 ---
-import { type CollectionEntry, getCollection } from 'astro:content';
-import { Image } from 'astro:assets';
-import Layout from '../../layouts/Main.astro';
-import FormattedDate from '../../components/FormattedDate.astro';
-import Prose from '../../components/Prose.astro';
-import { render } from 'astro:content';
-import * as rm from '../../remarked-frontmatter';
+import { type CollectionEntry, getCollection } from "astro:content";
+import { Image } from "astro:assets";
+import Layout from "../../layouts/Main.astro";
+import FormattedDate from "../../components/FormattedDate.astro";
+import Prose from "../../components/Prose.astro";
+import { render } from "astro:content";
+import * as rm from "../../remarked-frontmatter";
 
 export async function getStaticPaths() {
-	const posts = await getCollection('blog');
-	return posts.map((post) => ({
-		params: { slug: post.id },
-		props: post,
-	}));
+  const posts = await getCollection("blog");
+  return posts.map((post) => ({
+    params: { slug: post.id },
+    props: post,
+  }));
 }
-type Props = CollectionEntry<'blog'>;
+type Props = CollectionEntry<"blog">;
 
 const post = Astro.props;
 const { title, description, pubDate, cover } = post.data;
@@ -23,31 +23,40 @@ const updatedDate = rm.lastModified(remarkPluginFrontmatter);
 ---
 
 <Layout title={title} description={description}>
-	<article>
-		<div class="max-w-full">
-			<Image width={1020} height={510} src={cover} alt={description} loading="eager" class="mx-auto w-full rounded-xl shadow-md shadow-boxshadow" />
-		</div>
-		<div class="w-10/12 max-w-full m-auto text-primary">
-			<div class="mb-2 py-2 text-center">
-				<div class="mb-1 text-muted-foreground">
-					<FormattedDate date={pubDate} />
-					<!--
+  <article>
+    <div class="max-w-full">
+      <Image
+        width={1020}
+        height={510}
+        src={cover}
+        alt={description}
+        loading="eager"
+        class="mx-auto w-full rounded-xl shadow-md shadow-boxshadow"
+      />
+    </div>
+    <div class="w-10/12 max-w-full m-auto text-primary">
+      <div class="mb-2 py-2 text-center">
+        <div class="mb-1 text-muted-foreground">
+          <FormattedDate date={pubDate} />
+          <!--
 						TODO: add a git hook to populate missing publish times.
 						This code is meant to hide the last updated time if it's close to the publish time.
 						Since publish time is done manually and delays can happen, we have a long 1h grace period.
 					-->
-					{ (updatedDate.getTime() - pubDate.getTime()) > (1000 * 60 * 60) &&
-						<div class="italic">
-							Last updated on <FormattedDate date={updatedDate} />
-						</div>
-					}
-				</div>
-				<h1 class="text-6xl mb-12 text-foreground">{title}</h1>
-				<hr />
-			</div>
-			<Prose class="prose-xl">
-				<Content />
-			</Prose>
-		</div>
-	</article>
+          {
+            updatedDate.getTime() - pubDate.getTime() > 1000 * 60 * 60 && (
+              <div class="italic">
+                Last updated on <FormattedDate date={updatedDate} />
+              </div>
+            )
+          }
+        </div>
+        <h1 class="text-6xl mb-12 text-foreground">{title}</h1>
+        <hr />
+      </div>
+      <Prose className="prose-xl">
+        <Content />
+      </Prose>
+    </div>
+  </article>
 </Layout>

@@ -1,13 +1,15 @@
 ---
-import Header from '../components/Header.astro';
-import Footer from '../components/Footer.astro';
+import Header from "../components/Header.astro";
+import Footer from "../components/Footer.astro";
 ---
 
 <!-- TODO: after a while, consider integrating into main layout. is currently separate in case we want other layouts with same body. -->
-<body class="flex flex-col min-h-screen bg-background font-sans antialiased text-xl">
-    <Header />
-    <main class="flex-auto max-w-screen-lg mx-auto py-8">
-        <slot />
-    </main>
-    <Footer />
+<body
+  class="flex flex-col min-h-screen bg-background font-sans antialiased text-xl"
+>
+  <Header />
+  <main class="flex-auto max-w-screen-lg mx-auto py-8">
+    <slot />
+  </main>
+  <Footer />
 </body>
