@@ -1,6 +1,7 @@
 ---
 title: 'HackIM Goa CTF 2025 - Sess.io'
 description: 'Long sessions must be secure, right?'
+tags: [ "ctf", "ctf:web" ]
 pubDate: '2025-02-06T15:24:39Z'
 cover: 'header.png'
 ---
@@ -11,13 +12,13 @@ import { Image } from 'astro:assets';
 import challenge from 'challenge.png'
 import ui from 'ui.png'
 
-Here's what the challenge looks like:  
+Here's what the challenge looks like:
 <Image src={challenge} alt='The screenshot of the challenge showing a link to a website.' />
 
-And the UI:  
+And the UI:
 <Image src={ui} alt='The screenshot of the ui showing a username+password form and a link to the source code.' />
 
-Here's the PHP part of the code:  
+Here's the PHP part of the code:
 ```php
 define("ALPHA", str_split("abcdefghijklmnopqrstuvwxyz0123456789_-"));
 ini_set("error_reporting", 0);
@@ -391,7 +392,7 @@ function permutations($pool, $r = null) {
 
 function getseed(array $flagpart)
 {
-    return 
+    return
         ($flagpart[0] << 24) |
         ($flagpart[1] << 16) |
         ($flagpart[2] << 8) |

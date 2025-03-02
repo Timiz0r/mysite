@@ -1,6 +1,7 @@
 ---
 title: 'VSCode Markdown Paste on Wayland'
 description: 'Markdown Paste only supports xcopy, so what to do on Wayland?'
+tags: [ "programming" ]
 pubDate: '2025-02-03T11:05:19Z'
 cover: './header.png'
 ---
@@ -15,10 +16,10 @@ Using the [Markdown Paste](https://marketplace.visualstudio.com/items?itemName=t
 allows for the easy pasting of, among other things, images!
 
 {/*TODO: rendering keyboard shortcuts*/}
-Pasting via `Ctrl+Alt+V` will add the corresponding markdown...  
+Pasting via `Ctrl+Alt+V` will add the corresponding markdown...
 <Image src={sample} alt="sample pasted image" />
 
-And it will of course add the file -- for which we specify the name...  
+And it will of course add the file -- for which we specify the name...
 <Image src={filetree} alt="file tree showing the pasted image" />
 
 ## The issue
@@ -43,7 +44,7 @@ adding [my own `-t TARGETS` implementation](https://github.com/Timiz0r/wl-clipbo
 A quick `make install` later, and the extension works like a charm! 🥳
 
 ```sh
--t|-target) 
+-t|-target)
     if [ "$2" == "TARGETS" ]; then
         CLIPBOARD_COMMAND="${WL_PASTE}"
         set -- "${@}" "--list-types"

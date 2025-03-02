@@ -1,0 +1,16 @@
+---
+import { getCollection } from "astro:content";
+import Layout from "@/layouts/Main.astro";
+
+const tags = (await getCollection("blog")).flatMap(p => p.data.tags).sort();
+---
+
+<Layout title="Blog - Tags">
+  <ul>
+    {
+      tags.map(t => (
+        <li><a href={`/blog/tags/${t}`}>{t}</a></li>
+      ))
+    }
+  </ul>
+</Layout>

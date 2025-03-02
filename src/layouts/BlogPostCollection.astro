@@ -1,0 +1,58 @@
+---
+import { Image } from "astro:assets";
+import { type CollectionEntry } from "astro:content";
+import Layout from "@/layouts/Main.astro";
+import FormattedDate from "@/components/FormattedDate.astro";
+
+interface Props {
+  posts: CollectionEntry<"blog">[];
+}
+
+const { posts } = Astro.props;
+---
+
+<Layout title="Blog">
+  <section>
+    <ul class="flex flex-wrap gap-8 list-none">
+      {
+        posts
+          .sort((a, b) => b.data.pubDate.valueOf() - a.data.pubDate.valueOf())
+          .map((post) => (
+            <li class="w-5/12 first:w-full first:mb-1 first:text-center">
+              <a
+                href={`/blog/${post.id}/`}
+                class="no-underline transition-all duration"
+              >
+                <Image
+                  width={720}
+                  height={360}
+                  src={post.data.cover}
+                  alt={post.data.description}
+                  class="rounded-xl shadow-md shadow-boxshadow mb-2"
+                />
+                <h4 class="title text-foreground">{post.data.title}</h4>
+                <p class="text-muted-foreground">
+                  <FormattedDate date={post.data.pubDate} />
+                </p>
+              </a>
+            </li>
+          ))
+      }
+    </ul>
+  </section>
+</Layout>
+
+<style>
+  ul li * {
+    @apply no-underline transition-all duration-200;
+  }
+  ul li:first-child .title {
+    @apply text-4xl;
+  }
+  ul li:first-child img {
+    @apply w-full;
+  }
+  ul li a:hover * {
+    @apply text-accent-foreground;
+  }
+</style>
