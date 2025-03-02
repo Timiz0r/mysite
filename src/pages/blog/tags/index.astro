@@ -2,13 +2,14 @@
 import { getCollection } from "astro:content";
 import Layout from "@/layouts/Main.astro";
 
+// TODO: when we eventually have separate import for tags, use that instead of this to get a list of tags.
 const tags = (await getCollection("blog")).flatMap(p => p.data.tags).sort();
 ---
 
 <Layout title="Blog - Tags">
   <ul>
     {
-      tags.map(t => (
+      [...new Set(tags)].map(t => (
         <li><a href={`/blog/tags/${t}`}>{t}</a></li>
       ))
     }
