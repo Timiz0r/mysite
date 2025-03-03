@@ -21,11 +21,12 @@ export function Navigation({ currentPath }: { currentPath: string }) {
       <NavigationMenuList>
         <NavigationMenuItem><Link href="/" title="Home" /></NavigationMenuItem>
         <NavigationMenuItem>
-          <NavigationMenuTrigger className="p-4 h-fit">
+          <NavigationMenuTrigger>
+            {/* TODO: the submenu briefly pops up when clicking the link */}
             <Link href="/blog" title="Blog" hasSubmenu={true} />
           </NavigationMenuTrigger>
           <NavigationMenuContent>
-            <ul className="grid grid-cols-2 gap-4 w-80 p-4">
+            <ul className="flex flex-wrap gap-4 w-80 p-4">
               {
                 BlogTags.map(tag => (
                   <li>
@@ -46,13 +47,16 @@ export function Navigation({ currentPath }: { currentPath: string }) {
     hasSubmenu?: boolean;
   };
   function Link({ href, title, hasSubmenu, ...props }: LinkProps) {
+    // TODO: not currently in use, since the links get highlighted just fine, so prob remove this plumbing
+    // the current problem is that the blog link doesn't get highlighted.
     const active = currentPath == href;
     return (
       <NavigationMenuLink asChild active={active}>
         <a {...props} href={href} className={cn(
-          "text-xl font-medium rounded-md transition-colors w-fit",
-          active ? "border-b-2 border-accent-foreground" : "",
-          !hasSubmenu ? "p-4 hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground" : "")}>
+          "transition-colors rounded-md",
+          !hasSubmenu ? navigationMenuTriggerStyle() : "",
+          // these go at the end because they override navigationMenuTriggerStyle
+          "text-xl font-medium")}>
           {title}
         </a>
       </NavigationMenuLink>
