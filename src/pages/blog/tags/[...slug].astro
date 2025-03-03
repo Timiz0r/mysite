@@ -1,28 +1,13 @@
 ---
 import { getCollection } from "astro:content";
 import BlogPostCollection from "@/layouts/BlogPostCollection.astro";
+import { type BlogTag, TagGroup } from "@/lib/BlogTags";
 
 export async function getStaticPaths() {
   const posts = await getCollection("blog");
 
   type post = typeof posts[number];
-  type tag = NonNullable<post["data"]["tags"]>[number];
-  // TODO: would like to not have this list need to be updated each time a new tag is added
-  // but not the end of the world.
-  // also, since the whole `Object.keys(grouping) as Array<tag>` is weird-ish,
-  // should probably just shove some useful types in a file somewhere then import, including a "default-constructed" Record.
-  // the content collection would use the same import.
-  const grouping : Record<tag, post[]> = {
-    ctf: [],
-    "ctf:web": [],
-    "ctf:forensics": [],
-    "ctf:re": [],
-    "ctf:crypto": [],
-    "ctf:pwn": [],
-    "ctf:misc": [],
-    homelab: [],
-    programming: []
-  };
+  const grouping = TagGroup<post>();
 
   for (const post of posts) {
     for (const tag of post.data.tags ?? []) {
@@ -30,7 +15,7 @@ export async function getStaticPaths() {
     }
   }
 
-  return (Object.keys(grouping) as Array<tag>).map(t => ({
+  return (Object.keys(grouping) as Array<BlogTag>).map(t => ({
     params: { slug: t },
     props: { posts: grouping[t] }
   }));

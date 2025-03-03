@@ -2,6 +2,7 @@ import path from "node:path";
 import { slug as githubSlug } from 'github-slugger'
 import { glob } from 'astro/loaders';
 import { defineCollection, z } from 'astro:content';
+import { BlogTags } from "@/lib/BlogTags";
 
 /*
     Previously tried to expose dayjs via z.string().transform() and z.instanceof().
@@ -11,18 +12,6 @@ import { defineCollection, z } from 'astro:content';
     As such, we'll pass around Dates and convert to dayjs where necessary.
 */
 
-const blogTags = [
-    "ctf",
-    "ctf:web",
-    "ctf:forensics",
-    "ctf:re",
-    "ctf:crypto",
-    "ctf:pwn",
-    "ctf:misc",
-
-    "homelab",
-    "programming",
-] as const;
 const blog = defineCollection({
     loader: glob(
         {
@@ -41,7 +30,7 @@ const blog = defineCollection({
     schema: ({ image }) => z.object({
         title: z.string(),
         description: z.string(),
-        tags: z.array(z.enum(blogTags)).optional(),
+        tags: z.array(z.enum(BlogTags)).optional(),
         pubDate: z.coerce.date(),
         cover: image(), // alt text is effectively the description field
         // instead of the full path or "single path", we use "{dir}/id/"
