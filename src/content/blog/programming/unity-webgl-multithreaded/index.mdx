@@ -2,7 +2,7 @@
 title: How to add multi-threading to Unity WebGL -- with (mostly) C#!
 description: No C++! But maybe a *little* JavaScript.
 tags: [ "programming" ]
-pubDate: '2025-03-22T11:53:41Z'
+pubDate: '2025-03-22T12:03:34Z'
 cover: './header.png'
 ---
 
@@ -618,6 +618,16 @@ namespace WebGLMultiThreaded
         public string Bar;
     }
 }
+```
+
+Also, be sure to update the WASM project to include these files, as well.
+```xml
+  <PropertyGroup>
+    <OperationsDir>$(AssetsDir)\Operations</OperationsDir>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="$(OperationsDir)\**\*.cs" />
+  </ItemGroup>
 ```
 
 ### Foobar operation Web Worker
