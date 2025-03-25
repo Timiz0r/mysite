@@ -347,6 +347,8 @@ As a quick-note, I'm calling them "default" because they could hypothetically be
 -- not just Windows/Mac/Linux.
 
 We'll start with the default implementations because they should be pretty simple.
+Put them in `Platform/Default`, and be sure to add an assembly definition that targets all platforms except WebGL,
+as well as references `GameLogic` and `Operations`.
 
 ### Default OperationRunner
 Crazy simple, since `Awaitable` gives is a simple way to switch to a background thread:
