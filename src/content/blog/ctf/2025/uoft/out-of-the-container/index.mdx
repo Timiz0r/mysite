@@ -1,0 +1,148 @@
+---
+title: UofTCTF 2025 - Out of the Container
+description: Testing out a new program I wrote on the cloud! docker pull windex123/config-tester
+tags: [ "ctf", "ctf:misc" ]
+pubDate: '2025-03-27T17:55:33Z'
+cover: header.png
+---
+
+import { Image } from 'astro:assets';
+import challenge from './challenge.png';
+import layers from './layers.png';
+
+*Moving all of my past CTF write-ups to this website...*
+
+It's been a little bit since I've done a CTF, let alone a write-up!
+I've been focusing on the job search and haven't had much time.
+I didn't do too well this CTF since I wanted to focus on certain difficult problems
+(that I unfortunately wasn't able to solve), but the problems I did complete were fun!
+
+## Challenge
+<Image src={challenge} alt="challenge featuring a docker pull command" />
+
+```
+docker pull windex123/config-tester
+```
+
+## Analysis and solution
+First, [I quickly took a look to see what tags were available](https://hub.docker.com/r/windex123/config-tester/tags).
+A single `v1` tag exists. We can also take a quick look at the image layers here (or later on if we wanted):
+
+<Image src={layers} alt="v1 tag images for visual purposes" />
+
+There's a /tmp/config.txt. It also incidentally gets deleted in the next layer.
+In any case let's see what's inside:
+
+```
+docker pull windex123/config-tester:v1
+docker image save windex123/config-tester:v1 -o woo
+tar xf woo
+
+cd blobs/sha256
+# will fail for some blobs, but that's okay
+find . -type f -exec tar xf {} ';'
+```
+
+There's a `tmp/config.txt`, but it doesn't contain anything interesting.
+Luckily, there's a `tmp/config.json`, and it appears to be a Google Cloud service account credential file.
+I've removed the private key just in case, but we do indeed get the full credential.
+
+```json
+{
+  "type": "service_account",
+  "project_id": "uoftctf-2025-docker-chal",
+  "private_key_id": "",
+  "private_key": "",
+  "client_email": "docker-builder@uoftctf-2025-docker-chal.iam.gserviceaccount.com",
+  "client_id": "112040922998091528251",
+  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+  "token_uri": "https://oauth2.googleapis.com/token",
+  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+  "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/docker-builder%40uoftctf-2025-docker-chal.iam.gserviceaccount.com",
+  "universe_domain": "googleapis.com"
+}
+```
+
+After [installing the gcloud CLI](https://cloud.google.com/sdk/docs/install),
+we can activate the service account and take a look at the project's IAM policies:
+
+```sh
+gcloud auth activate-service-account --key-file=config.json
+gcloud projects get-iam-policy uoftctf-2025-docker-chal
+```
+
+I've removed entries that our service account doesn't have access to, but they look something like this:
+
+```yaml
+bindings:
+- members:
+  - serviceAccount:docker-builder@uoftctf-2025-docker-chal.iam.gserviceaccount.com
+  role: projects/uoftctf-2025-docker-chal/roles/iampolicyviewer
+- members:
+  - serviceAccount:809703936711-compute@developer.gserviceaccount.com
+  - serviceAccount:docker-builder@uoftctf-2025-docker-chal.iam.gserviceaccount.com
+  - serviceAccount:gke-containerssh@containerssh-uoftctf-2025.iam.gserviceaccount.com
+  role: roles/artifactregistry.reader
+- members:
+  - serviceAccount:docker-builder@uoftctf-2025-docker-chal.iam.gserviceaccount.com
+  role: roles/cloudbuild.builds.viewer
+etag: BwYrMml-3VU=
+version: 1
+```
+
+First, we can luckily run the command we just ran thanks to iampolicyviewer,
+which saves us having to try every single Google Cloud service manually.
+Second, we can read through the artifact registry.
+Finally, we can look through cloud builds.
+
+I first took a look through the artifact registry. There were some docker images available...
+
+```
+┌──(kali㉿kali)-[~/Downloads/working/blobs/sha256]
+└─$ gcloud artifacts docker images list us-east1-docker.pkg.dev/uoftctf-2025-docker-chal/containers
+Listing items under project uoftctf-2025-docker-chal, location us-east1, repository containers.
+
+IMAGE                                                                             DIGEST                                                                   CREATE_TIME          UPDATE_TIME          SIZE
+us-east1-docker.pkg.dev/uoftctf-2025-docker-chal/containers/countdown             sha256:4e5405cf64720a3e9c0afc2039dbe600fec2076347a142d50ae93f00feb6b065  2024-12-28T16:30:15  2024-12-28T16:30:15  2159150
+...
+```
+
+But exploring them yielded nothing. Cloud builds, on the other hand, were interesting!
+
+```
+┌──(kali㉿kali)-[~/Downloads/working/blobs/sha256]
+└─$ gcloud builds list
+ID                                    CREATE_TIME                DURATION  SOURCE                                                                                                  IMAGES  STATUS
+73e88f4b-25e2-42c9-9f21-4f09179b01a7  2024-12-28T21:30:06+00:00  10S       gs://uoftctf-2025-docker-chal_cloudbuild/source/1735421405.701703-f6bc36d5206d41e1b5fe6e52172f04d9.tgz  -       SUCCESS
+63fd6916-5ea1-4f64-a500-697a2509c616  2024-12-28T21:29:57+00:00  18S       gs://uoftctf-2025-docker-chal_cloudbuild/source/1735421396.7854-82812ab5e8f64808aa494daaf4289b4d.tgz    -       SUCCESS
+54523aec-c160-4580-8b29-54c575eea0af  2024-12-28T21:29:53+00:00  14S       gs://uoftctf-2025-docker-chal_cloudbuild/source/1735421392.683126-942a0f6b964f42e9955a9419b1cae910.tgz  -       SUCCESS
+c1b329e3-be72-47af-9fc3-6cdd8841d24e  2024-12-28T21:29:23+00:00  16S       gs://uoftctf-2025-docker-chal_cloudbuild/source/1735421362.491894-f177f04b6e0f40f2ac3d7ae9be44df09.tgz  -       SUCCESS
+2d353ba4-1198-47b4-94bc-43de2b05ccb2  2024-12-28T17:39:39+00:00  11S       gs://uoftctf-2025-docker-chal_cloudbuild/source/1735407500.030089-978c61fd95eb4b7dabeaf7203e9d1241.tgz  -       SUCCESS
+4a4bbc46-5a8b-4d36-a23f-39366ab2eac7  2024-12-28T17:39:12+00:00  21S       gs://uoftctf-2025-docker-chal_cloudbuild/source/1735407551.681712-a6648e6d7a1c40a3923bdfbb353f0a05.tgz  -       SUCCESS
+4a596848-069f-47c0-a92d-30c9f72593d6  2024-12-28T17:38:21+00:00  10S       gs://uoftctf-2025-docker-chal_cloudbuild/source/1735407500.030089-978c61fd95eb4b7dabeaf7203e9d1241.tgz  -       SUCCESS
+```
+
+In particular, `c1b329e3-be72-47af-9fc3-6cdd8841d24e` had an interesting log entry:
+
+```
+┌──(kali㉿kali)-[~/Downloads/working/blobs/sha256]
+└─$ gcloud builds log c1b329e3-be72-47af-9fc3-6cdd8841d24e
+------------------------------------------------ REMOTE BUILD OUTPUT -------------------------------------------------
+starting build "c1b329e3-be72-47af-9fc3-6cdd8841d24e"
+...
+
+INFO[0005] RUN git clone https://github.com/OverjoyedValidity/countdown-timer.git /tmp &&     rm -rf /tmp
+
+...
+DONE
+----------------------------------------------------------------------------------------------------------------------
+```
+
+And it's in that repo that we find our flag:
+
+```
+┌──(kali㉿kali)-[~/Downloads/working/blobs/sha256]
+└─$ cat countdown-timer/*
+uoftctf{out-of-the-bucket3}
+```
+

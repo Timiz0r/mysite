@@ -1,0 +1,267 @@
+---
+title: TBTL CTF 2024 - Enough with the averages
+description: Statistics can say anything you want them to ... perhaps even the flag.
+tags: [ "ctf", "ctf:pwn" ]
+pubDate: '2025-03-27T17:54:11Z'
+cover: header.png
+---
+
+import { Image } from 'astro:assets';
+import teamname from './teamname.png';
+import challenge from './challenge.png';
+import stack from './stack.png';
+import stack_overwrite from './stack_overwrite.png';
+import average_player0 from './average_player0.png';
+import average_player19 from './average_player19.png';
+import average_player18 from './average_player18.png';
+
+*Moving all of my past CTF write-ups to this website...*
+
+Just did my first CTF in at least 8 years!
+I've never been great at them, but 700 points and 71st place out of 792 teams isn't so bad.
+If I wasn't busy preparing for a trip to Japan, I think I could have gotten another 200 or 300 points, but oh well!
+
+<Image src={teamname} alt="team name `pls gif job ty`" />
+
+Hoping this will hopefully help with my job search,
+let's do a write-up here on LinkedIn!
+Also, I haven't done a write-up in as many years, and writing them is fun.
+
+## Challenge
+Here's what the challenge looks like:
+
+<Image src={challenge} alt="challenge, mainly featuring the .c file and netcat command" />
+
+And here's the code provided with the challenge:
+
+```c
+// gcc -o chall chall.c -Wextra
+#include <stdio.h>
+#include <stdlib.h>
+
+void read_flag() {
+  FILE* in;
+  char flag[64];
+  in = fopen("flag.txt", "rt");
+  fscanf(in, "%s", flag);
+  fclose(in);
+}
+
+void vuln() {
+  int score[20];
+  int total = 0;
+  for (int i=0; i<20; i++) {
+    printf("Enter score for player %d:\n", i);
+    scanf("%d", &score[i]);
+    total += score[i];
+  }
+  printf("Average score is %lf.\n", total/20.);
+  printf("Type q to quit.");
+  while (getchar() != 'q');
+}
+
+int main() {
+  setbuf(stdin, NULL);
+  setbuf(stdout, NULL);
+  read_flag();
+  vuln();
+  return 0;
+}
+```
+
+## Analysis
+In principle, these kinds of challenges require providing some special input in order to get the flag.
+It honestly took an embarrassing amount of time to solve this because I'm both rusty
+and am not the best at binary exploitation to begin with.
+Most of that time was trying to exploit `scanf` to somehow magically overflow past `&score[i]`
+and into another part of the stack that the function call to scanf would jump back to at the end --
+ideally to something that outputs the flag.
+This is impossible here (I think), as I'm sure people more skilled than I could know at a glance.
+In particular, `%d` won't allow that to happen no matter the input -- only reading 4 bytes,
+which I suspected but tried endlessly anyway.
+
+There are two important keys to solving this challenge.
+First, `read_flag` reads the flag into the stack (of the `read_flag` function).
+Second, if `scanf` tries to read an input incompatible with the provided format, it will do literally nothing.
+
+First, let's create our flag file locally (`foobarfffffffffffffffffffffffffffffffffff` in my case),
+run the program, and see what the stack looks like, let's say, just before we `scanf`.
+
+<Image src={stack} alt="screenshot of the stack showing the flag" />
+
+Even though we're in a different function (`vuln`) to where the flag was read (`read_flag`),
+it's data is in this functions stack (aka between `rsp` and `rbp`)!
+This is the first key: that `read_flag`'s stack data -- in particular the flag read to the stack -- is accessible to `vuln`.
+```c
+ for (int i=0; i<20; i++) {
+    printf("Enter score for player %d:\n", i);
+    scanf("%d", &score[i]);
+    total += score[i];
+  }
+  printf("Average score is %lf.\n", total/20.);
+  printf("Type q to quit.");
+```
+
+We have 3 `printf`s to utilize to try to get the data exfiltrated.
+One is a static string, so it's out.
+Another is for printing `i` -- a value that will only ever be 0-19, so it's also out.
+Luckily, `total` is dynamic, so hopefully there's a way to use it to get the data we want.
+
+`total`'s value is produced by adding `score[i]`, so perhaps the score array is relevant.
+Let's try providing the program a bunch of zeroes and see what the stack looks like.
+
+<Image src={stack_overwrite} alt="screenshot of stack showing zeroes overwriting the flag" />
+
+Perfect! We can easily see that the score array overlaps with where the flag was previously read to.
+This is where the second key comes in: we can stop `scanf` from overwriting the flag by providing an invalid value --
+like the character `x`. `total` will then be computed with the values of the flag.
+
+Unfortunately, since the program doesn't print the `score` array directly,
+we need to exfiltrate the data using only the `total` variable and the corresponding `printf`.
+If we start by providing the character `x` as player 0's score, we get the average,
+which we can multiply by 20.0 to get the total.
+Since we never overwrote the score array, this total is the sum of the values
+that happened to have been in the stack at the time -- which we know includes the flag.
+
+<Image src={average_player0} alt="the average if we set player 0's score to `x` is -3041468.100000" />
+
+And here's where it started to get obvious for me, and probably you as well!
+If we provide zeroes for players 0-18 and `x` for player 19,
+the total will be zero plus whatever was in the stack at `score[19]`.
+
+<Image src={average_player19} alt="the average if player 19's score is `x` is 1638.250000" />
+
+Here's the unnerving part.
+The stack is non-deterministic, and the values *might* vary between runs.
+To see if that will be a problem here, we do the same thing again. Luckily, the same value came back!
+
+Now let's do the same as last time, except we'll provide x for player 18.
+
+<Image src={average_player18} alt="the average if player 18's score is `x` is -38754816.550000" />
+
+And so on and so forth!
+
+## Exploit
+Let's perform this on the server, this time.
+Note that it gave nice-and-neat zeroes for the last few entries (unlike in my local code),
+and I excluded them as they won't be necessary.
+Also note that I, via the debugger, had already found out that the flag starts at the player 4 entry,
+so I excluded 0-3 as well.
+
+```
+-25787339.550000,
+91481479.900000,
+-6823664.050000,
+-91936488.950000,
+79868497.900000,
+-12567975.050000,
+-56350006.300000,
+-99532309.300000,
+16910501.950000,
+-27039161.350000,
+88410919.350000,
+44628132.750000,
+6.250000
+```
+
+We can multiply these by 20 to get the totals from these averages.
+Furthermore, we can consider them as ints, instead of doubles,
+because that's what total is, and we don't lose any data doing this.
+We'll also reverse the set, since it'll be easier to handle and reason about (don't have to, though).
+
+```
+125,
+892562655,
+1768218387,
+-540783227,
+338210039,
+-1990646186,
+-1127000126,
+-251359501,
+1597369958,
+-1838729779,
+-136473281,
+1829629598,
+-515746791,
+764843629
+```
+
+We can actually convert these values back into the `score` array
+(or perhaps more correctly: the `score` array as it would be with the underlying values being the flag)!
+This set of numbers is a running sum of all the score,
+and we need only subtract the prior value to get the original score.
+Of course, with integer math, we had some overflowing when the total was computed, but that's not a problem.
+Here are the scores!
+
+```
+125,
+892562530,//for example: 892562655 (see above list) - 125
+875655732,
+1985965682,
+878993266,
+1966111071,
+863646060,
+875640625,
+1848729459,
+858867559,
+1702256498,
+1966102879,
+1949590907,
+1280590420
+```
+
+`int`s are all 32-bit, 4-byte integers, so let's convert them to bytes and then characters.
+
+```
+}bl354r14rn_vr_d4_y0ul1z31714s_1ngG13r_ve_Y0u{e4tTBTL
+```
+
+Woops! We reversed the numbers earlier on!
+
+```
+TBTL{e4t_Y0ur_vegG13s_1n1714l1z3_y0ur_d4rn_v4r14bl35}
+```
+
+And that's our flag!
+
+## Code
+Since I'm a .NET guy, here's the C# way to compute the solution.
+Note that I got the list of averages manually because meh.
+
+```cs
+double[] doubles = new[]
+{
+    38242181.450000,
+    -25787339.550000,
+    91481479.900000,
+    -6823664.050000,
+    -91936488.950000,
+    79868497.900000,
+    -12567975.050000,
+    -56350006.300000,
+    -99532309.300000,
+    16910501.950000,
+    -27039161.350000,
+    88410919.350000,
+    44628132.750000,
+    6.250000
+};
+
+int[] ints = doubles.Select(n => Convert.ToInt32(n * 20.0)).Reverse().ToArray();
+
+List<int> score = new();
+int last = 0;
+foreach (int n in ints)
+{
+    score.Add(n - last);
+    last = n;
+}
+
+var strings = score.Select(
+    s => Encoding.UTF8.GetString(
+        BitConverter.GetBytes(s)
+            .Where(b => b != 0)
+            .ToArray()));
+
+Console.WriteLine(string.Join("", strings.Reverse()));
+```

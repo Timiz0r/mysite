@@ -1,0 +1,206 @@
+---
+title: TBTL CTF 2024 - Your papers, please
+description: Verifiable credentials are the future of digital identity?
+tags: [ "ctf", "ctf:web" ]
+pubDate: '2025-03-27T17:54:02Z'
+cover: header.png
+---
+
+import { Image } from 'astro:assets';
+import challenge from './challenge.png';
+import solution from './solution.png';
+
+*Moving all of my past CTF write-ups to this website...*
+
+My flight got delayed, and I had to rebook to one that leaves 7 hours later. That leaves me free to do another write-up!
+
+This was a simple one, but the number of solves was surprisingly few.
+
+*Note from myself 9mo later: This actually came up in another CTF recently and had few solves.*
+*It's honestly comes across as a very real bug that could happen, so I definitely recommend keeping this challenge in the back of your mind!*
+
+Of course, there were some I couldn't solve that had a good amount of solves, so I'm not judging.
+
+Also a quick note that I tagged it `ctf:web` because I don't recall the original category,
+and, using JWTs, it might as well be web.
+
+## Challenge
+<Image src={challenge} alt="the challenge mainly featuring a link to the python code and a link to a JWT" />
+
+Here, we're given the address to a server, the server's code,
+a list of required python packages, and a [JWT](https://en.wikipedia.org/wiki/JSON_Web_Token).
+
+Here's the server code:
+```py
+#!/usr/bin/python3
+
+import base64
+import datetime
+import json
+import os
+import signal
+
+import humanize
+import jwt
+
+
+# openssl ecparam -name secp521r1 -genkey -noout -out private.key
+# openssl ec -in private.key -pubout -out public.pem
+PUBLIC_KEY = u'''-----BEGIN PUBLIC KEY-----
+MIGbMBAGByqGSM49AgEGBSuBBAAjA4GGAAQBGOtycGkAMpTEDsjFykEywLecIdCX
+1QIShxmJB0qJj9K2yFNwJj/eRR6yzIZcHJPZWzQU6Mad62y1MsJ8uOgdZ2sBmkS0
+HJtT4FZq/EQbtkHeahsDnSLbFpPfoN/t8hmKrVmDzDRGe3PNl7OQVuzoY2TVSxVK
+IKmpZ9Pw9/5HOzSmOxs=-----END PUBLIC KEY-----
+'''
+
+
+def myprint(s):
+    print(s, flush=True)
+
+
+def handler(_signum, _frame):
+    myprint("Time out!")
+    exit(0)
+
+
+def decode(token):
+    signing_input, crypto_segment = token.rsplit(".", 1)
+    header_segment, payload_segment = signing_input.split(".", 1)
+    header_data = base64.urlsafe_b64decode(header_segment)
+    header = json.loads(header_data)
+    alg = header["alg"]
+    return jwt.decode(token, algorithms=[alg], key=PUBLIC_KEY)
+
+
+def main():
+    signal.signal(signal.SIGALRM, handler)
+    signal.alarm(300)
+
+    myprint("Your papers, please.")
+    token = input()
+    try:
+        mdl = decode(token)
+        assert mdl["docType"] == "iso.org.18013.5.1.mDL"
+        family_name = mdl["family_name"]
+        given_name = mdl["given_name"]
+        expiry_date = datetime.datetime.strptime(mdl["expiry_date"], "%Y-%m-%dT%H:%M:%S.%f")
+    except Exception as e:
+        myprint("Your papers are not in order!")
+        exit(0)
+    myprint("Hello {} {}!".format(given_name, family_name))
+    delta = expiry_date - datetime.datetime.now()
+    if delta <= datetime.timedelta(0):
+        myprint("Your papers expired {} ago!".format(humanize.naturaldelta(delta)))
+        exit(0)
+
+    flag = open("flag.txt", "r").read().strip()
+    myprint("Your papers are in order, here is your flag: {}".format(flag))
+    exit(0)
+
+
+if __name__ == '__main__':
+    main()
+```
+
+In essence, we need to give it a JWT that can be decoded with `PUBLIC_KEY` and is not expired.
+Here's the JWT we're given:
+
+```
+eyJhbGciOiJFUzUxMiIsInR5cCI6IkpXVCJ9.eyJ2ZXJzaW9uIjoiMS4wIiwiZG9jVHlwZSI6Imlzby5vcmcuMTgwMTMuNS4xLm1ETCIsImZhbWlseV9uYW1lIjoiVFVSTkVSIiwiZ2l2ZW5fbmFtZSI6IlNVU0FOIiwiYmlydGhfZGF0ZSI6IjE5OTgtMDgtMjgiLCJpc3N1ZV9kYXRlIjoiMjAxOC0wMS0xNVQxMDowMDowMC4wMCIsImV4cGlyeV9kYXRlIjoiMjAyMi0wOC0yN1QxMjowMDowMC4wMCIsImlzc3VpbmdfY291bnRyeSI6IlVTIiwiaXNzdWluZ19hdXRob3JpdHkiOiJDTyIsImRvY3VtZW50X251bWJlciI6IjU0MjQyNjgxNCIsImRyaXZpbmdfcHJpdmlsZWdlcyI6W3siY29kZXMiOlt7ImNvZGUiOiJEIn1dLCJ2ZWhpY2xlX2NhdGVnb3J5X2NvZGUiOiJEIiwiaXNzdWVfZGF0ZSI6IjIwMTktMDEtMDEiLCJleHBpcnlfZGF0ZSI6IjIwMjctMDEtMDEifV0sInVuX2Rpc3Rpbmd1aXNoaW5nX3NpZ24iOiJVU0EifQ.ATOuXnzmtdiOPhuu1ksgF6FqKjHNHJoyMLHF28xsRgVNUANFlUv9l_xM9TGg_s9ZbFy6gimaH80MSHl6wHOxg8yxAFS22jy1GEPX3Kc4ZPUKEjd7q6vbo1zLXEfNjpkwBbU6M9pbqS6CmBxM1MY93WDjNY8p5mGYdBtbD3XccmOivGDH
+```
+
+And in [decoded form](https://jwt.io/):
+```jsonc
+// Header:
+{
+  "alg": "ES512",
+  "typ": "JWT"
+}
+
+// Payload
+{
+  "version": "1.0",
+  "docType": "iso.org.18013.5.1.mDL",
+  "family_name": "TURNER",
+  "given_name": "SUSAN",
+  "birth_date": "1998-08-28",
+  "issue_date": "2018-01-15T10:00:00.00",
+  "expiry_date": "2022-08-27T12:00:00.00",
+  "issuing_country": "US",
+  "issuing_authority": "CO",
+  "document_number": "542426814",
+  "driving_privileges": [
+    {
+      "codes": [
+        {
+          "code": "D"
+        }
+      ],
+      "vehicle_category_code": "D",
+      "issue_date": "2019-01-01",
+      "expiry_date": "2027-01-01"
+    }
+  ],
+  "un_distinguishing_sign": "USA"
+}
+
+// And signature information that we don't care about.
+```
+
+## Analysis
+This JWT is expired, so we can't use it directly.
+Strictly speaking, we don't even have to use this JWT as a base, but let's use it anyway.
+
+Now, until now, I wasn't familiar with the details of JWTs.
+The biggest mystery is what `ES512` means, so I asked my best friend: Google Search.
+It actually brought me to [a documentation page for the very library used in the server](https://pyjwt.readthedocs.io/en/latest/algorithms.html)
+and has a description of the various supported algorithms.
+`ES512` refers to *ECDSA signature algorithm using SHA-512 hash algorithm*.
+This means it uses asymmetric encryption,
+which I suppose we can guess by the presence of a public key in the server anyway.
+
+After reading this and the code, the solution jumped right out at me! In the decode function:
+```py
+def decode(token):
+    signing_input, crypto_segment = token.rsplit(".", 1)
+    header_segment, payload_segment = signing_input.split(".", 1)
+    header_data = base64.urlsafe_b64decode(header_segment)
+    header = json.loads(header_data)
+    alg = header["alg"]
+    return jwt.decode(token, algorithms=[alg], key=PUBLIC_KEY)
+```
+
+The algorithm is read from the header of the JWT and used to decode it.
+[Double checking the API](https://pyjwt.readthedocs.io/en/latest/api.html)...
+```py
+jwt.decode(jwt, key="", algorithms=None, options=None, audience=None, issuer=None, leeway=0)
+```
+
+## Exploit
+It appears that, regardless of whether symmetric or asymmetric encryption is used,both use the key parameter.
+The solution is therefore to encode our non-expired JWT using symmetric key encryption,
+where the key is the public key that would normally be used in asymmetric encryption.
+This can all be done one from [the JWT debugger page](https://jwt.io/) linked above.
+
+<Image src={solution} alt="screenshot of pasting our new JWT and receiving the flag" />
+
+```
+TBTL{1n_H34d3rS_W3_Tru$7}
+```
+
+The important moral of the story, since code seems innocuous at first glance:
+ignore/whitelist the the `alg` header and use only the appropriate key for the appropriate algorithm.
+
+And, more importantly, for those designing a JWT API...
+
+```py
+jwt.decode(jwt, key="", algorithms=None, options=None, audience=None, issuer=None, leeway=0)
+```
+
+This isn't really the way to go about it. Instead, accept algorithm and key as a tuple.
+It also conveniently solvesa key rotation issues if multiple keys are accepted anyway.
+
+```py
+# or, instead of or in addition to tuples, and object/dict is probably better
+jwt.decode(token, keys=[("ES512", PUBLIC_KEY)])
+```

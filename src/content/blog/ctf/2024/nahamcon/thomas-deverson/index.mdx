@@ -1,0 +1,125 @@
+---
+title: NahamCon CTF 2024 - Thomas DEVerson
+description: Party like it's 1797!
+tags: [ "ctf", "ctf:web" ]
+pubDate: '2025-03-27T17:55:06Z'
+cover: header.png
+---
+
+import { Image } from 'astro:assets';
+import challenge from './challenge.png';
+import mainpage from './mainpage.png';
+import status from './status.png';
+import main_src from './main_src.png';
+import burr from './burr.png';
+
+*Moving all of my past CTF write-ups to this website...*
+
+More CTFs, more opportunities to create write-ups that will hopefully connect me with a job!
+
+## Challenge
+<Image src={challenge} alt="challenge featuring link to web page" />
+
+How's the page look?
+
+<Image src={mainpage} alt="page has Start, Messages, and Status buttons in navbar, plus a username input on this main page" />
+
+If we plop in a random username and hit Go, we get redirected to the Messages page
+with a glorified unauthorized message not worth screenshotting.
+We also get a cookie! 🍪
+
+```
+eyJuYW1lIjoiYXNkYXNkYXNkIn0.Zk_wdQ.Sp2ci_COVzu1mJtDPe79BoiZAhg
+```
+
+Since the first part looks base-64-ey, I tried decoding it:
+
+```json
+{"name":"asdasdasd"}
+```
+
+This will clearly be a part of the solution.
+I tried messing with the cookie contents by changing the name to Thomas, Jefferson, SQL-i-ey stuff and got nothing.
+Messing with the other parts of the cookie also did nothing.
+Adding more to the JSON payload like isFederalist=false also didn't work.
+Realistically, the other parts of the cookie are probably related to signing,
+so no messing around with the cookie like this will help.
+
+Incidentally, no robots.txt either.
+
+I tried the Status page, as well.
+
+<Image src={status} alt="staus page shows 82k days of uptime" />
+
+So still nothing else to go on. Here's the source of the main page:
+
+<Image src={main_src} alt="source of main page shows commented out /backup page" />
+
+Oh thank god something else to end the 30mins of getting nowhere fast.
+Navigating to the `/backup` page, we get a useful blob of text:
+```
+---------- command output: {head -n 10 app.py} ----------
+
+from flask import (Flask, flash, redirect, render_template, request, send_from_directory, session, url_for)
+from datetime import datetime
+
+app = Flask(__name__)
+
+c = datetime.now()
+f = c.strftime("%Y%m%d%H%M")
+app.secret_key = f'THE_REYNOLDS_PAMPHLET-{f}'
+
+allowed_users = ['Jefferson', 'Madison', 'Burr'] # No Federalists Allowed!!!!
+
+---------- command output: {head -n 10 requirements.txt} ----------
+
+Flask==3.0.3
+```
+
+So the first thing of note is that only one of three names works. Let's try Burr.
+
+<Image src={burr} alt='"Cannot login as Burr, account is protected!"' />
+
+## Exploit
+Clearly, we need to forge a cookie.
+Both the presence of a secret_key and Flask's documentation confirm that the cookie is signed (by this key).
+Luckily, we're given the (dynamic) key!
+
+I tried googling around for a way to compute a Flask session cookie without having to create a simple Flask app,
+and, while I didn't exactly find such a tool, I found [flask-unsign](https://pypi.org/project/flask-unsign/).
+This is usually used to try to brute-force a key for a given cookie,
+but it has [some handy code](https://github.com/Paradoxis/Flask-Unsign/blob/e934573b2bcc3cfd58769e93e6761d0a9d3f21ab/flask_unsign/session.py#L42C3-L42C5)
+that we can call to create the cookie.
+
+Again, the key is basically...
+
+```py
+f'THE_REYNOLDS_PAMPHLET-{ datetime.now().strftime("%Y%m%d%H%M") }'
+```
+
+The key is specific to a minute of time (`%M`).
+If we literally try this expression it doesn't work.
+If we try utcnow instead, it also doesn't work -- worth trying because the Date header is relative to GMT.
+Really the only thing left is to try computing the date from the uptime given in the Status page.
+If we use this kind of code to produce a cookie...
+```py
+# timedelta based on status page of challenge
+sign({"name":"Burr"}, f'THE_REYNOLDS_PAMPHLET-{(datetime.utcnow() - timedelta(days=82816, hours=16, minutes=51)).strftime("%Y%m%d%H%M")}')
+
+# 'eyJuYW1lIjoiQnVyciJ9.Zk_0mg.WlX1PYbdc8xh-svaFZj7aKa-wFs'
+```
+
+We get the flag!
+
+```html
+<div class="col-xl-6 ml-auto jumbo-vertical-center">
+  <div>
+      <h1>Welcome fellow Democratic Republican!</h1>
+      <p>Don't tell Hamilton, but we totally know what he did.</p>
+      <strong>flag{f69f2c087b291b9da9c9fe9219ee130f}</strong>
+  </div>
+</div>
+```
+
+Yay democracy!
+

@@ -1,0 +1,285 @@
+---
+title: NahamCon CTF 2024 - Taking Up Residence
+description: Residence... 🏠
+tags: [ "ctf", "ctf:forensics" ]
+pubDate: '2025-03-27T17:54:57Z'
+cover: header.png
+---
+
+import { Image } from 'astro:assets';
+import challenge from './challenge.png';
+
+*Moving all of my past CTF write-ups to this website...*
+
+Another fun one! This was the final challenge I completed before heading to bed...
+at 11am 🤔 -- a satisfying finish to a satisfying CTF!
+
+## Challenge
+<Image src={challenge} alt="challenge featuring a zip file" />
+
+A zip file!
+
+```
+┌──(kali㉿kali)-[~/Downloads/ev]
+└─$ unzip -l Evidence_001.zip
+Archive:  Evidence_001.zip
+  Length      Date    Time    Name
+---------  ---------- -----   ----
+418119680  2024-05-20 20:01   Evidence_001
+---------                     -------
+418119680                     1 file
+```
+
+With a single file!
+
+## Analysis
+```
+┌──(kali㉿kali)-[~/Downloads/ev/_Evidence_001.zip.extracted]
+└─$ file Evidence_001
+Evidence_001: data
+
+┌──(kali㉿kali)-[~/Downloads/ev/_Evidence_001.zip.extracted]
+└─$ binwalk Evidence_001
+
+DECIMAL       HEXADECIMAL     DESCRIPTION
+--------------------------------------------------------------------------------
+171335        0x29D47         mcrypt 2.2 encrypted data, algorithm: blowfish-448, mode: CBC, keymode: 8bit
+476576        0x745A0         GIF image data, version "89a", 1 x 1
+636719        0x9B72F         mcrypt 2.2 encrypted data, algorithm: blowfish-448, mode: CBC, keymode: 8bit
+637103        0x9B8AF         mcrypt 2.2 encrypted data, algorithm: blowfish-448, mode: CBC, keymode: 8bit
+743840        0xB59A0         GIF image data, version "89a", 1 x 1
+789920        0xC0DA0         GIF image data, version "89a", 1 x 1
+790944        0xC11A0         GIF image data, version "89a", 1 x 1
+791968        0xC15A0         GIF image data, version "89a", 1 x 1
+964040        0xEB5C8         XML document, version: "1.0"
+1000872       0xF45A8         PNG image, 48 x 48, 8-bit/color RGBA, non-interlaced
+1198496       0x1249A0        GIF image data, version "89a", 1 x 1
+```
+
+Neither `file` nor `binwalk` know what it is though. What strings are there? Well, a lot, so here's a sample.
+
+```
+┌──(kali㉿kali)-[~/Downloads/ev/_Evidence_001.zip.extracted]
+└─$ strings Evidence_001 | grep bash
+bash.txt
+User\Desktop\bash.txt
+set TZData(:Africa/Lubumbashi) $TZData(:Africa/Maputo)
+#!/bin/bash
+```bash
+# add ~/.bash_profile if needed for executing ~/.bashrc
+if [ -e ~/.bashrc -a ! -e ~/.bash_profile -a !
+e ~/.bash_login -a ! -e ~/.profile ]; then
+  printf "\n\033[31mWARNING: Found ~/.bashrc but no ~/.bash_profile, ~/.bash_login or ~/.profile.\033[m\n\n"
+  echo "A ~/.bash_profile that loads ~/.bashrc will be created for you."
+  cat >~/.bash_profile <<-\EOF
+  test -f ~/.bashrc && . ~/.bashrc
+#!/usr/bin/bash
+#!/bin/bash
+```bash
+Before reporting a bug in bash-completion, please check that you don't have
+Acrobat's acroread.sh installed in /etc/bash_completion.d/. That completion,
+in fact, redefines internal bash-completion functions, breaking it.
+instance, if 'man bash'
+fails to display the bash(1) manual page correctly, I will usually want
+to see the output of 'man --debug bash'.
+# config file for bash-completion
+```
+
+We have what seems to be a whole bunch of different kind of stuff contained within!
+There are shebangs, shell scripts, file names, the contents of a .bashrc file, and documentation. 🤔🤔🤔🤔🤔
+So some sort of an esoteric archive?
+
+Also a quick note that I moved to Windows for the rest of this one.
+
+Let's take a look in a hex editor. Looking around, I could see somewhat of a pattern. Here's part of one "entry":
+
+```
+Offset(h) 00 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 0F
+
+00131400  46 49 4C 45 30 00 03 00 04 B1 54 CC 00 00 00 00  FILE0....±TÌ....
+00131410  05 00 01 00 38 00 01 00 90 03 00 00 00 04 00 00  ....8...........
+00131420  00 00 00 00 00 00 00 00 03 00 00 00 C5 04 00 00  ............Å...
+00131430  02 00 FA 9D 00 00 00 00 10 00 00 00 60 00 00 00  ..ú.........`...
+00131440  00 00 00 00 00 00 00 00 48 00 00 00 18 00 00 00  ........H.......
+00131450  5C 9C 82 AA 16 A0 DA 01 DD 3F EE A0 0C AB DA 01  \œ‚ª. Ú.Ý?î .«Ú.
+00131460  DD 3F EE A0 0C AB DA 01 DD 3F EE A0 0C AB DA 01  Ý?î .«Ú.Ý?î .«Ú.
+00131470  20 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00   ...............
+00131480  00 00 00 00 59 06 00 00 00 00 00 00 00 00 00 00  ....Y...........
+00131490  60 1D 5C 19 00 00 00 00 30 00 00 00 70 00 00 00  `.\.....0...p...
+001314A0  00 00 00 00 00 00 02 00 52 00 00 00 18 00 01 00  ........R.......
+001314B0  1A 59 01 00 00 00 01 00 5C 9C 82 AA 16 A0 DA 01  .Y......\œ‚ª. Ú.
+001314C0  DD 3F EE A0 0C AB DA 01 DD 3F EE A0 0C AB DA 01  Ý?î .«Ú.Ý?î .«Ú.
+001314D0  DD 3F EE A0 0C AB DA 01 00 00 00 00 00 00 00 00  Ý?î .«Ú.........
+001314E0  00 00 00 00 00 00 00 00 20 00 00 00 00 00 00 00  ........ .......
+001314F0  08 03 66 00 6C 00 61 00 67 00 2E 00 6C 00 6E 00  ..f.l.a.g...l.n.
+00131500  6B 00 00 00 00 00 00 00 80 00 00 00 80 02 00 00  k.......€...€...
+00131510  00 00 18 00 00 00 01 00 64 02 00 00 18 00 00 00  ........d.......
+00131520  4C 00 00 00 01 14 02 00 00 00 00 00 C0 00 00 00  L...........À...
+00131530  00 00 00 46 9B 00 20 00 20 00 00 00 2C 97 65 5E  ...F›. . ...,—e^
+00131540  0C AB DA 01 8B E3 26 97 0C AB DA 01 06 7B E6 96  .«Ú.‹ã&—.«Ú..{æ–
+00131550  0C AB DA 01 8C 00 00 00 00 00 00 00 01 00 00 00  .«Ú.Œ...........
+00131560  00 00 00 00 00 00 00 00 00 00 00 00 AA 00 14 00  ............ª...
+00131570  1F 50 E0 4F D0 20 EA 3A 69 10 A2 D8 08 00 2B 30  .PàOÐ ê:i.¢Ø..+0
+00131580  30 9D 3A 00 2E 80 05 39 8E 08 23 03 02 4B 98 26  0.:..€.9Ž.#..K˜&
+00131590  5D 99 42 8E 11 5F 26 00 01 00 26 00 EF BE 11 00  ]™BŽ._&...&.ï¾..
+001315A0  00 00 0D 29 F4 0D C7 11 D6 01 E3 73 13 C4 1D A0  ...)ô.Ç.Ö.ãs.Ä.
+001315B0  DA 01 77 BF 79 52 09 AB DA 01 14 00 5A 00 32 00  Ú.w¿yR.«Ú...Z.2.
+001315C0  8C 00 00 00 B4 58 D1 BA 20 00 66 6C 61 67 2E 74  Œ...´XÑº .flag.t
+001315D0  78 74 00 00 42 00 09 00 04 00 EF BE B4 58 9D BA  xt..B.....ï¾´X.º
+001315E0  B4 58 D1 BA 2E 00 00 00 31 5F 00 00 00 00 04 00  ´XÑº....1_......
+001315F0  00 00 00 00 00 00 00 00 00 00 00 00 00 00 02 00  ................
+00131600  29 01 66 00 6C 00 61 00 67 00 2E 00 74 00 78 00  ).f.l.a.g...t.x.
+00131610  74 00 00 00 18 00 00 00 4F 00 00 00 1C 00 00 00  t.......O.......
+00131620  01 00 00 00 1C 00 00 00 2D 00 00 00 00 00 00 00  ........-.......
+00131630  4E 00 00 00 11 00 00 00 03 00 00 00 3F 59 F1 20  N...........?Yñ
+00131640  10 00 00 00 00 43 3A 5C 55 73 65 72 73 5C 55 73  .....C:\Users\Us
+00131650  65 72 5C 44 6F 77 6E 6C 6F 61 64 73 5C 66 6C 61  er\Downloads\fla
+00131660  67 2E 74 78 74 00 00 21 00 2E 00 2E 00 5C 00 2E  g.txt..!.....\..
+00131670  00 2E 00 5C 00 2E 00 2E 00 5C 00 2E 00 2E 00 5C  ...\.....\.....\
+00131680  00 2E 00 2E 00 5C 00 44 00 6F 00 77 00 6E 00 6C  .....\.D.o.w.n.l
+00131690  00 6F 00 61 00 64 00 73 00 5C 00 66 00 6C 00 61  .o.a.d.s.\.f.l.a
+001316A0  00 67 00 2E 00 74 00 78 00 74 00 17 00 43 00 3A  .g...t.x.t...C.:
+001316B0  00 5C 00 55 00 73 00 65 00 72 00 73 00 5C 00 55  .\.U.s.e.r.s.\.U
+001316C0  00 73 00 65 00 72 00 5C 00 44 00 6F 00 77 00 6E  .s.e.r.\.D.o.w.n
+001316D0  00 6C 00 6F 00 61 00 64 00 73 00 60 00 00 00 03  .l.o.a.d.s.`....
+001316E0  00 00 A0 58 00 00 00 00 00 00 00 77 69 6E 64 65  .. X.......winde
+001316F0  76 32 30 30 34 65 76 61 6C 00 00 FC BA 81 37 5D  v2004eval..üº.7]
+00131700  63 5A 44 96 6A B9 54 A6 86 1E D7 B0 F4 A5 06 17  cZD–j¹T¦†.×°ô¥..
+```
+
+Each entry seems to begin with `FILE0` and incidentally seems to be aligned,
+probably due to padding at the end of each entry.
+It's hard to demonstrate without pasting an obnoxious amount of data,
+but not every entry has any contents stored within, which is peculiar.
+Well, I don't know what this file is, so google to the rescue!
+It's hard to find good results, though,
+since large file containing `FILE0` entries and whatnot tend to bring up other results.
+Googling `46 49 4C 45 30 00 03` -- the byte sequence common to every entry --
+showed me that this is an NTFS MFT (master file table).
+Incidentally, the very first entry has a UTF-16 encoded file name `$MFT`,
+which is kinda hard to spot when staring at a wall of hex 🤷.
+
+Further googling brings us to [the key MFTECmd](https://github.com/EricZimmerman/MFTECmd)!
+Here are the relevant parts of the help text:
+
+```
+C:\Users\GPUVM\Downloads\MFTECmd>MFTECmd.exe
+Description:
+  MFTECmd version 1.2.2.1
+
+  Author: Eric Zimmerman (saericzimmerman@gmail.com)
+  https://github.com/EricZimmerman/MFTECmd
+
+Usage:
+  MFTECmd [options]
+
+Options:
+  -f <f>           File to process ($MFT | $J | $Boot | $SDS | $I30). Required
+  --json <json>    Directory to save JSON formatted results to. This or --csv required unless --de or --body is
+                   specified
+                   Example: 5, 624-5 or 0x270-0x5.
+  --dr             When true, dump $MFT resident files to dir specified by --csv or --json, in 'Resident' subdirectory.
+```
+
+Apparently some file table entries can contain actual files -- resident files!
+I guess that's what the challenge name refers to.
+This also explains why some entries had file data and some didn't.
+Let's dump the resident files and start looking around.
+
+```
+PS C:\Users\GPUVM\Downloads\MFTECmd\output\Resident> ls | select-string "flag\.txt"
+
+1221-5_flag.lnk.bin:3:���s���w�yR       ��Z2��XѺ flag.txtB
+ﾴX���XѺ.1_��)flag.txtO-N?Y� C:\Users\Use
+r\Downloads\flag.txt!..\..\..\..\..\Downloads\flag.txtC:\Users\User\
+Downloads`�Xwindev2004eval���7]cZD�j�T��װ���'l�����7]cZD�j�T��װ���'l��E
+�91SPS�mD��pH�H@.�=x�hH���@$
+22910-3_flag.txt.lnk.bin:3:���s���w�yR  ��f2�XN FLAGTX~1.TXTJ
+ﾧXN�XN.}Y@;�flag.txt.txtS-R?Y� C:\
+Users\User\Downloads\flag.txt.txt%..\..\..\..\..\Downloads\flag.txt.txtC:\
+Users\User\Downloads
+59966-5_untitled[1].py.bin:5:with open('flag.txt', 'r') as reader:
+```
+
+Found an interesting file...
+
+```py
+# PS C:\Users\GPUVM\Downloads\MFTECmd\output\Resident> gc '.\59966-5_untitled`[1`].py.bin'
+from cryptography.fernet import Fernet
+import subprocess
+
+key =  result = subprocess.run(["powershell", "-EncodedCommand", "RwBlAHQALQBDAG8AbgB0AGUAbgB0ACAALQBQAGEAdABoACAAIgByAGEAbgBzAG8AbQAuAHAAeQAiACAALQBTAHQAcgBlAGEAbQAgACIAawBlAHkAIgA="], capture_output=True, text=True).stdout.strip()
+with open('flag.txt', 'r') as reader:
+    message = reader.read()
+f = Fernet(key)
+encrypted_message = f.encrypt(message.encode())
+```
+
+We found a script that ultimately reads the flag and encrypts it with some key.
+It doesn't seem to write it anywhere, but we'll worry about that later. What about that base64?
+
+```
+PS C:\Users\GPUVM\Downloads\MFTECmd\output\Resident> [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String(
+"RwBlAHQALQBDAG8AbgB0AGUAbgB0ACAALQBQAGEAdABoACAAIgByAGEAbgBzAG8AbQAuAHAAeQAiACAALQBTAHQAcgBlAGEAbQAgACIAawBlAHkAIgA="))
+
+Get-Content -Path "ransom.py" -Stream "key"
+```
+
+That `Stream` we see here is an NTFS alternate data stream -- a technique often used to hide malicious code/data from users.
+It's not actually that relevant for this challenge,
+but I hadn't personally run into NTFS alternate data streams in the wild in this way yet! It was fun to see.
+
+In any case, let's find `ransom.py` if we can.
+
+```
+PS C:\Users\GPUVM\Downloads\MFTECmd\output\Resident> gi *ransom.py*
+
+
+    Directory: C:\Users\GPUVM\Downloads\MFTECmd\output\Resident
+
+
+Mode                 LastWriteTime         Length Name
+----                 -------------         ------ ----
+-a----         5/25/2024   8:20 PM             46 97579-2_ransom.py.bin
+
+
+PS C:\Users\GPUVM\Downloads\MFTECmd\output\Resident> gi *ransom.py* | gc
+62QJTO5dH0xaKgmiVfOFKNYCBMfRiNF5L7rxDChc0SU=
+```
+
+Seems like a key to me! What about the flag?
+
+```
+PS C:\Users\GPUVM\Downloads\MFTECmd\output\Resident> gi *flag.txt.bin*
+
+
+    Directory: C:\Users\GPUVM\Downloads\MFTECmd\output\Resident
+
+
+Mode                 LastWriteTime         Length Name
+----                 -------------         ------ ----
+-a----         5/25/2024   8:20 PM            140 24369-4_flag.txt.bin
+
+
+PS C:\Users\GPUVM\Downloads\MFTECmd\output\Resident> gi *flag.txt.bin* | gc
+gAAAAABmS9s32v5Ju181EaJhh2vYMsR6MJ31SK-9mDwgiCz3_MBWopjqqynjoY_-HNOw3tX1T3RthBZHz9ylmyqckZ0gUZ_6T7UUxprMHoCAaTV3m1q0weznBg98RL7dRVhRn0cX6Xta
+```
+
+Even though the script didn't appear to write out the encrypted contents, we seem to have retrieved some ciphertext.
+It's probably best not to question things and just roll with it...
+
+## Solution
+We can simply do the reverse of what the script does:
+```py
+from cryptography.fernet import Fernet
+
+key = b'62QJTO5dH0xaKgmiVfOFKNYCBMfRiNF5L7rxDChc0SU='
+ciphertext = b'gAAAAABmS9s32v5Ju181EaJhh2vYMsR6MJ31SK-9mDwgiCz3_MBWopjqqynjoY_-HNOw3tX1T3RthBZHz9ylmyqckZ0gUZ_6T7UUxprMHoCAaTV3m1q0weznBg98RL7dRVhRn0cX6Xta'
+
+f = Fernet(key)
+print(f.decrypt(ciphertext))
+
+# b'flag{a4096cd70d8859d38cf8e7487b4cd0fa}'
+```
+
+There's our flag! 🚩🚩
