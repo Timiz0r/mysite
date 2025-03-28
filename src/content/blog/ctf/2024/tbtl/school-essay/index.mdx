@@ -1,0 +1,246 @@
+---
+title: TBTL CTF 2024 - School Essay
+description: My Favorite Classmate 😍
+tags: [ "ctf", "ctf:crypto" ]
+pubDate: '2025-03-27T17:53:54Z'
+cover: header.png
+---
+
+import { Image } from 'astro:assets';
+import challenge from './challenge.png';
+
+*Moving all of my past CTF write-ups to this website...*
+
+This is my second-favorite challenge I completed in the CTF.
+Perhaps that's because I find crypto challenges to be pretty hard.
+I also suspect there were better ways to solve this, so I'm quite interested in other write-ups of this challenge.
+
+## Challenge
+<Image src={challenge} alt="challenge featuring python code and its output generated with the flag" />
+
+First, we're given the code to generate an essay.
+```py
+from Crypto.Util.number import *
+from redacted import FLAG
+
+ESSAY_TEMPLATE = """
+My Favorite Classmate
+=====================
+
+My favorite person in this class has a beautiful smile,
+great sense of humour, and lots of colorful notebooks.
+
+However, their most distinctive feature is the fact that
+you can represent their name as an integer value, square
+it modulo %d,
+and you'll get %d.
+
+Additionally, When you compute the greatest integer not exceeding
+the cube root of their squared name, you get %d.
+
+By now, all of you have probably guessed who I'm talking about.
+"""
+
+
+def invpow3(x):
+    lo, hi = 1, x
+    while lo < hi:
+        mid = (lo + hi) // 2 + 1
+        if (mid**3) <= x:
+            lo = mid
+        else:
+            hi = mid - 1
+    return lo
+
+
+N = 59557942237937483757629838075432240015613811860811898821186897952866236010569299041278104165604573
+
+name_int = bytes_to_long(FLAG)
+
+assert 1 < name_int < N
+
+value_1 = (name_int**2) % N
+value_2 = invpow3(name_int**2)
+
+print(ESSAY_TEMPLATE % (N, value_1, value_2))
+```
+
+And we're given such an essay.
+
+```
+My Favorite Classmate
+=====================
+
+My favorite person in this class has a beautiful smile,
+great sense of humour, and lots of colorful notebooks.
+
+However, their most distinctive feature is the fact that
+you can represent their name as an integer value, square
+it modulo 59557942237937483757629838075432240015613811860811898821186897952866236010569299041278104165604573,
+and you'll get 34994952631013563439857468985559745199379391295940238707110695903159545061311344766055629477728657.
+
+Additionally, When you compute the greatest integer not exceeding
+the cube root of their squared name, you get 7906488397402721714607879953738472269409876715324979164781592447.
+
+By now, all of you have probably guessed who I'm talking about.
+```
+
+## Analysis
+The `value_1` expression is simple RSA with an exponent of 2, so this challenge could be a doozy.
+If it was just this, we wouldn't be reasonably able to find the plaintext key from just this cyphertext (and modulus).
+
+Luckily, we have another expression that will hopefully help us solve the challenge: `value_2 = invpow3(name_int**2)`.
+This expression is reversible to a certain extent: `name_int = math.isqrt(value_2 ** 3)`
+
+## Solution
+First, let's see what we get by partially reversing the operation.
+
+```py
+from Crypto.Util.number import *
+import math
+long_to_bytes(math.isqrt(val2 ** 3))
+# TBTL{J0hn_J4c0b_J1n6leH31mc)n\x02\xf5\xd0\xf4:\xa1+\xfdR\xe1\xec
+```
+
+So apparently this person loves a mister John Jacob Jingleheimer Schmidt,
+which is fair, seeing as his name is my name too.
+The reason we can't fully reverse the computation is because
+integer math means there are multiple strings that can result in that value.
+
+Still, we got most of the flag!
+Let's clean up the string to make it easier to read.
+The last character is surely `}`, since all flags have been ending in that.
+There should also be an underscore before Schmidt.
+
+```
+TBTL{J0hn_J4c0b_J1n6leH31???_??????????}
+```
+
+Brute-forcing from here would take too much time, though.
+Since we know roughly what the flag is supposed to look like,
+we can narrow down most of the question marks to drastically bring down the search space.
+```
+TBTL{J0hn_J4c0b_J1n6leH31mer_schmidt???}
+
+m=mM
+e=eE3
+r=rR
+s=sS5
+c=cC
+h=hH
+i=iI1
+d=dD
+t=tT7
+```
+
+The brute-forcing will be done against `value_1 = (name_int**2) % N` and `value_2 = invpow3(name_int**2)`.
+
+## Code
+On my machine, it takes 4min to run.
+This being a CTF, there are other challenges that can be attempted in the meantime!
+
+```py
+from Crypto.Util.number import *
+import itertools
+
+def invpow3(x):
+    lo, hi = 1, x
+    while lo < hi:
+        mid = (lo + hi) // 2 + 1
+        if (mid**3) <= x:
+            lo = mid
+        else:
+            hi = mid - 1
+    return lo
+
+# we computed this earlier with:
+# where q means unknown
+#b'TBTL{J0hn_J4c0b_J1n6leH31mqq_qqqqqqqqqq}'
+
+# came from the essay we were given
+N = 59557942237937483757629838075432240015613811860811898821186897952866236010569299041278104165604573
+val1 = 34994952631013563439857468985559745199379391295940238707110695903159545061311344766055629477728657
+val2 = 7906488397402721714607879953738472269409876715324979164781592447
+
+def char_range(c1, c2):
+    for c in range(ord(c1), ord(c2)+1):
+        yield chr(c)
+
+data = [
+    ["T"],
+    ["B"],
+    ["T"],
+    ["L"],
+    ["{"],
+    ["J"],
+    ["0"],
+    ["h"],
+    ["n"],
+    ["_"],
+    ["J"],
+    ["4"],
+    ["c"],
+    ["0"],
+    ["b"],
+    ["_"],
+    ["J"],
+    ["1"],
+    ["n"],
+    ["6"],
+    ["l"],
+    ["e"],
+    ["H"],
+    ["3"],
+    ["1"],
+    ["m", "M"],
+    ["e", "E", "3"],
+    ["r", "R"],
+    ["_"],
+    ["s", "S", "5"],
+    ["c", "C"],
+    ["h", "H"],
+    ["m", "M"],
+    ["i", "I", "1"],
+    ["d", "D"],
+    ["t", "T", "7"],
+    char_range("!", "~"),
+    char_range("!", "~"),
+    char_range("!", "~"),
+    ["}"]
+]
+
+
+data = list(''.join(x) for x in data)
+
+for flag in itertools.product(*data):
+    flag = str.encode(''.join(flag))
+    name = bytes_to_long(flag)
+    if (name**2 % N) != val1:
+        continue
+    if invpow3(name**2) != val2:
+        continue
+    print(flag)
+    break
+```
+
+## The flag
+```
+❯ python solve.py
+b'TBTL{J0hn_J4c0b_J1n6leH31mer_Schm1d7_<3}'
+```
+
+We found him!
+
+### Fun fact
+If we instead go based off only `value_2`, we get the wrong flag!
+Or, rather, we're unable to figure out the last 3 characters.
+```
+❯ python run.py
+b'TBTL{J0hn_J4c0b_J1n6leH31mer_schmidt!!!}'
+```
+
+If we just do `value_1`, the runtime is basically the same.
+
+If we use `multiprocessing`, it takes longer!
+This is perhaps because the setup requires takes a long time.
+Didn't try threads, though.
