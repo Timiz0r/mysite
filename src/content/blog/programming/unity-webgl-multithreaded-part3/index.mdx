@@ -229,7 +229,8 @@ The request id correlation has also improved. We no longer need to store a map a
 Instead, `interop.Foobar(num)` returns a `Promise`,
 and the callbacks we use with `Promise`s need only capture the request id.
 
-For `GameLogicInterop.jslib`, it's imporant to note that the code below will not work.
+For `GameLogicInterop.jslib`, it's important to note that the code below will not work without a bit more modification.
+Still...
 ```js
 mergeInto(LibraryManager.library, {
   WebGLGameLogic_Initialize: function (eventHandler) {
@@ -298,7 +299,7 @@ However, the `message` handler within the Web Worker script won't be ready to re
 
 ## Improving initialization logic
 We need some way to signal that the Web Worker is ready before we set `this.interop.subscriber`.
-While not strictly necessary for our `operationRunnerInteropWorker.js`, we'll do it anyway.
+While not strictly necessary for our `operationRunnerInteropWorker.js`, we'll do it there, as well.
 
 First, let's send a message after our call to `Comlink.expose`, for both scripts.
 ```js
@@ -331,7 +332,8 @@ Our `OperationRunnerInterop.jslib` changes will be pretty simple.
 
 After instantiating our `Worker`, we immediately add a `message` handler that looks for our special `_init` message.
 If we find it, we perform the rest of our initialization -- in this case, setting `this.initComplete`.
-The reason we do the `Comlink.wrap` here is because `Comlink.wrap` will overwrite our special `message` event handler.
+The reason we do the `Comlink.wrap` here and not earlier
+is because `Comlink.wrap` will overwrite our special `message` event handler.
 
 Our `GameLogicInterop.jslib` will be pretty similar.
 ```js
