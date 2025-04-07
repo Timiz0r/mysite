@@ -1,0 +1,384 @@
+---
+title: Improving Unity WebGL C# multi-threading with Comlink! Part 3
+description: Comlink is a gift from the gods!
+tags: [ "programming" ]
+pubDate: '2025-04-07T02:25:25Z'
+cover: './header.png'
+---
+
+## Intro
+Part 3 of a multi-part series!
+* [Part 1](https://kyouha.today/blog/programming/unity-webgl-multithreaded): Initial C# -> JS interop implementation
+* [Part 2](https://kyouha.today/blog/programming/unity-webgl-multithreaded-part2): Cross-platform implementation
+* [Part 3](https://kyouha.today/blog/programming/unity-webgl-multithreaded-part3): Simplifying JS interop with Comlink
+
+Additionally, the version of the code used is here: https://github.com/Timiz0r/WebGLMultiThreaded/tree/comlink
+It contains a decent *summary* of all the code and doesn't require any prior reading.
+
+We'll mainly be working off the code we left off with in part 2,
+so considering giving it a read to follow along.
+Still, I'll do my best to make this post useful without having to read prior posts.
+
+## Goal
+Using a library called [Comlink](https://github.com/GoogleChromeLabs/comlink),
+we can do away with implementing basically all of the Web Worker logic.
+As a side-goal, we'll also improve the Web Worker initialization logic.
+
+As a quick review of what our Web Workers currently look like, we need to handle incoming messages,
+plus send back response messages.
+```js
+import { dotnet } from './_framework/dotnet.js'
+
+onmessage = e => {
+    postMessage({ requestId: e.data.requestId, command: "initializing" });
+};
+
+let assemblyExports = null;
+// .net initialization
+
+onmessage = e => {
+    // ...
+
+    try {
+        if (!assemblyExports) {
+            throw new Error(startupError || "worker exports not loaded");
+        }
+
+        switch (e.data.command) {
+            case "Foobar":
+                const num = e.data.num;
+                const result = assemblyExports.OperationInterop.Foobar(num);
+                return sendResponse(result)
+            default:
+                throw new Error("Unknown command: " + e.data.command);
+        }
+    }
+    catch (err) {
+        sendError(err)
+    }
+};
+```
+
+Over in Unity, we need to do all of the message receiving and passing, as well,
+plus some state management to correlate messages.
+```js
+mergeInto(LibraryManager.library, {
+  OperationRunnerInterop_Initialize: function () {
+    if (window.operationRunnerInterop) return;
+
+    window.operationRunnerInterop = new class {
+      constructor() {
+        const worker = new Worker('interop/wwwroot/operationRunnerInteropWorker.js', { type: "module" });
+        worker.onmessage = e => {
+          const command = e.data.command;
+          const requestId = e.data.requestId;
+        
+          const callbacks = window.operationRunnerInterop.pendingRequests[requestId];
+          delete window.operationRunnerInterop.pendingRequests[requestId];
+          if (callbacks == null) {
+            console.error("Operation response has no corresponding request.");
+            return;
+          }
+
+          const success = callbacks.success;
+          const failure = callbacks.failure;
+          const initializing = callbacks.initializing;
+
+          if (command === "initializing") {
+            this.sendResponse(initializing, requestId, null);
+            return;
+          }
+
+          if (command === "error") {
+            this.sendResponse(failure, requestId, e.data.error);
+            return;
+          }
+
+          if (command === "response") {
+            this.sendResponse(success, requestId, e.data.result);
+            return;
+          }
+
+          console.error("Unknown command: ", command);
+        };
+
+        this.worker = worker;
+        this.pendingRequests = {};
+        this.nextRequestId = 0;
+      }
+
+      sendRequest(request, success, failure, initializing) {
+        const requestId = this.nextRequestId++;
+        this.pendingRequests[requestId] = { success, failure, initializing };
+        this.worker.postMessage({ ...request, requestId });
+        return requestId;
+      }
+      
+      sendResponse(callback, requestId, response) {
+        const len = lengthBytesUTF8(response) + 1;
+        const buffer = _malloc(len);
+        stringToUTF8(response, buffer, len);
+        {{{ makeDynCall('vii', 'callback') }}} (requestId, buffer);
+        _free(buffer);
+      }
+    }();
+  },
+
+  OperationRunnerInterop_Foobar: function (num, success, failure, initializing) {
+    return window.operationRunnerInterop.sendRequest({ command: "Foobar", num }, success, failure, initializing);
+  },
+});
+```
+
+Almost all of this logic should go away with Comlink!
+
+## Use Comlink inside Web Workers
+We'll go over how Comlink actually works in a bit, but, for now, let's start off by converting our code --
+starting with `operationRunnerInteropWorker.js`, which is our call-like semantics demonstration, to use Comlink.
+
+```js
+import { dotnet } from "./_framework/dotnet.js";
+import * as Comlink from "https://unpkg.com/comlink/dist/esm/comlink.mjs";
+
+const { getAssemblyExports, getConfig } = await dotnet.create();
+
+const config = getConfig();
+const assemblyExports = await getAssemblyExports(config.mainAssemblyName);
+const interop = assemblyExports.OperationInterop;
+
+Comlink.expose(interop);
+```
+
+For this scenario, it's as easy as `Comlink.expose`ing what we get out of .NET: `OperationInterop`.
+All of our message-handling logic has gone away completely.
+
+What about or event-like semantics demonstration: `gameLogicInteropWorker.js`?
+```js
+import { dotnet } from "./_framework/dotnet.js";
+import * as Comlink from "https://unpkg.com/comlink/dist/esm/comlink.mjs";
+
+const { setModuleImports, getAssemblyExports, getConfig } = await dotnet.create();
+
+const config = getConfig();
+const assemblyExports = await getAssemblyExports(config.mainAssemblyName);
+const interop = assemblyExports.GameLogicInterop;
+
+setModuleImports("GameLogic", {
+    StateChanged: data => { interop.subscriber && interop.subscriber(data); }
+});
+
+Comlink.expose(interop);
+```
+
+It's also just as easy! The only weird part is `interop.subscriber`.
+We don't define this property anywhere in `GameLogicInterop`, so where does it come from? We'll see soon enough!
+
+## Use Comlink to instantiate web workers
+Within Web Workers, we use `Comlink.expose` to do all of the setup there, and we see big improvements.
+What about where we instantiate them? Does `OperationRunnerInterop.jslib` improve?
+```js
+mergeInto(LibraryManager.library, {
+  OperationRunnerInterop_Initialize: function () {
+    if (window.operationRunnerInterop) return;
+
+    window.operationRunnerInterop = new class {
+      constructor() {
+        import("https://unpkg.com/comlink/dist/esm/comlink.mjs").then(Comlink => {
+          this.interop = Comlink.wrap(
+            new Worker('interop/wwwroot/operationRunnerInteropWorker.js', { type: "module" }));
+        });
+        this.nextRequestId = 0;
+      }
+
+      begin(request, success, failure) {
+        const requestId = this.nextRequestId++;
+
+        request(this.interop).then(
+          result => invokeCallback(success, result),
+          err => invokeCallback(failure, JSON.stringify(err)));
+
+        return requestId;
+
+        // NOTE: since we need to serialize WASM-side, success results should always be a string.
+        // of course, errors are a bit different.
+        function invokeCallback(callback, response) {
+          const len = lengthBytesUTF8(response) + 1;
+          const buffer = _malloc(len);
+          stringToUTF8(response, buffer, len);
+
+          {{{ makeDynCall('vii', 'callback') }}} (requestId, buffer);
+          _free(buffer);
+        }
+      }
+    }();
+  },
+
+  OperationRunnerInterop_Foobar: function (num, success, failure) {
+    return window.operationRunnerInterop.begin(interop => interop.Foobar(num), success, failure);
+  },
+});
+```
+
+It sure has improved!
+For `interop => interop.Foobar(num)`, note that `interop`, in this case, is a `Worker` wrapped in a `Comlink.wrap`.
+Instead of having to implement message handling within the Web Worker and the place we instantiate it,
+`Comlink` translates calls (aka `apply`; also does `get`s, `set`s, and more) into messages,
+messages back into calls, return values to messages, and messages back into return values.
+
+The request id correlation has also improved. We no longer need to store a map as a part of the helper class.
+Instead, `interop.Foobar(num)` returns a `Promise`,
+and the callbacks we use with `Promise`s need only capture the request id.
+
+For `GameLogicInterop.jslib`, it's imporant to note that the code below will not work.
+```js
+mergeInto(LibraryManager.library, {
+  WebGLGameLogic_Initialize: function (eventHandler) {
+    if (window.WebGLGameLogic) return;
+
+    window.WebGLGameLogic = new class {
+      constructor () {
+        import("https://unpkg.com/comlink/dist/esm/comlink.mjs").then(Comlink => {
+          this.interop = Comlink.wrap(
+            new Worker('interop/wwwroot/gameLogicInteropWorker.js', { type: "module" }));
+          // `this` isn't what we think `this` is thanks to the Comlink proxy,
+          // so we wrap the handleEvent call in an arrow func to capture the right `this`
+          this.interop.subscriber = Comlink.proxy(data => this.handleEvent(data));
+        });
+
+        this.eventHandler = eventHandler;
+      }
+
+      update(time) {
+        this.interop.Update(time);
+      }
+
+      // NOTE: since we need to serialize WASM-side, data will be a string, so no need to JSON.stringify
+      handleEvent(data) {
+        const len = lengthBytesUTF8(data) + 1;
+        const buffer = _malloc(len);
+        stringToUTF8(data, buffer, len);
+
+        const eventHandler = this.eventHandler;
+        {{{ makeDynCall('vi', 'eventHandler') }}} (buffer);
+        _free(buffer);
+      }
+    }();
+  },
+
+  WebGLGameLogic_Update: function (time) {
+    window.WebGLGameLogic.update(time);
+  },
+});
+```
+
+Remember this code in our Web Worker script?
+```js
+setModuleImports("GameLogic", {
+    StateChanged: data => { interop.subscriber && interop.subscriber(data); }
+});
+```
+
+Here we can see where `interop.subscriber` came from:
+Comlink will translate the `set` into the appropriate operation in the Web Worker script.
+
+The reason this code will not work is that our Web Worker script is asynchronous.
+We only call `Comlink.expose(interop);` after `await`ing all of the .NET initialization:
+```js
+// ...
+const { setModuleImports, getAssemblyExports, getConfig } = await dotnet.create();
+// ...
+const assemblyExports = await getAssemblyExports(config.mainAssemblyName);
+// ...
+Comlink.expose(interop);
+```
+
+Setting `this.interop.subscriber` will result in a message being sent to the Web Worker,
+and we do this immediately after instantiating `Worker` (and wrapping it).
+However, the `message` handler within the Web Worker script won't be ready to receive the message, and it gets dropped.
+
+## Improving initialization logic
+We need some way to signal that the Web Worker is ready before we set `this.interop.subscriber`.
+While not strictly necessary for our `operationRunnerInteropWorker.js`, we'll do it anyway.
+
+First, let's send a message after our call to `Comlink.expose`, for both scripts.
+```js
+// ...
+Comlink.expose(interop);
+postMessage("_init");
+```
+
+Our `OperationRunnerInterop.jslib` changes will be pretty simple.
+```js
+      constructor() {
+        const worker = new Worker('interop/wwwroot/operationRunnerInteropWorker.js', { type: "module" });
+        worker.onmessage = m => {
+          if (m.data === "_init") {
+            import("https://unpkg.com/comlink/dist/esm/comlink.mjs").then(Comlink => {
+              this.interop = Comlink.wrap(worker);
+              this.initComplete = true;
+            });
+          }
+        }
+
+        this.nextRequestId = 0;
+      }
+
+      begin(request, success, failure) {
+        if (!this.initComplete) return -1;
+        // ...
+      }
+```
+
+After instantiating our `Worker`, we immediately add a `message` handler that looks for our special `_init` message.
+If we find it, we perform the rest of our initialization -- in this case, setting `this.initComplete`.
+The reason we do the `Comlink.wrap` here is because `Comlink.wrap` will overwrite our special `message` event handler.
+
+Our `GameLogicInterop.jslib` will be pretty similar.
+```js
+      constructor () {
+        const worker = new Worker('interop/wwwroot/gameLogicInteropWorker.js', { type: "module" });
+        worker.onmessage = m => {
+          if (m.data === "_init") {
+            import("https://unpkg.com/comlink/dist/esm/comlink.mjs").then(Comlink => {
+              this.interop = Comlink.wrap(worker);
+              // `this` isn't what we think `this` is thanks to the Comlink proxy,
+              // so we wrap the handleEvent call in an arrow func to capture the right `this`
+              this.interop.subscriber = Comlink.proxy(data => this.handleEvent(data));
+              this.initComplete = true;
+            });
+          }
+        };
+
+        this.eventHandler = eventHandler;
+      }
+
+      update(time) {
+        if (!this.initComplete) return;
+        this.interop.Update(time);
+      }
+```
+
+Now we only set `subscriber` after our Web Worker is ready to receive the message and Comlink is ready to handle it.
+
+## Conclusion
+And that's it! No more message handling!
+This was perhaps the most tedious part of the prior solutions, and we no longer need to handle it.
+The tedium of adding new events and new calls still exists, though.
+
+As implemented in the event-like demonstration, additional events would require changes to:
+* WASM
+* Web Worker
+* jslib
+* C# code that interfaces with jslib
+
+As implemented in the call-like demonstration, adding new operations requires changes to:
+* WASM
+* jslib
+* C# code that interfaces with jslib
+
+In both cases, the changes aren't complicated, but they are prone to copy-paste errors.
+I have two more followup posts planned that will tackle this:
+1. Using Roslyn to take our initial `GameLogic` and `Foobar` classes
+   and generate WASM, Web Worker, jslib, and `C# code that interfaces with jslib` code.
+2. Taking everything we've learned and summarizing all prior parts into a single, easy to read post.
+   We'll start with an empty Unity project and make all the optimal decisions!

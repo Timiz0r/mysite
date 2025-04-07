@@ -1,5 +1,5 @@
 ---
-title: How to add multi-threading to Unity WebGL -- with (mostly) C#!
+title: How to add multi-threading to Unity WebGL -- with (mostly) C#! Part 1
 description: No C++! But maybe a *little* JavaScript.
 tags: [ "programming" ]
 pubDate: '2025-03-22T13:33:02Z'
@@ -10,11 +10,12 @@ import { Image } from 'astro:assets';
 import eventFlowchart from './eventbasedgamelogic.png';
 import callFlowchart from './callbasedoperation.png';
 
-## Part 2
-Part two, featuring cross-platform implementation that shares the same code as WebGL, found here:
-https://kyouha.today/blog/programming/unity-webgl-multithreaded-part2
-
 ## Intro
+Part 1 of a multi-part series!
+* [Part 1](https://kyouha.today/blog/programming/unity-webgl-multithreaded): Initial C# -> JS interop implementation
+* [Part 2](https://kyouha.today/blog/programming/unity-webgl-multithreaded-part2): Cross-platform implementation
+* [Part 3](https://kyouha.today/blog/programming/unity-webgl-multithreaded-part3): Simplifying JS interop with Comlink
+
 Figured out how to add multi-threading to Unity WebGL projects with C# and without using native threads! Well, sorta...
 
 It uses a mix of .NET WASM and, of course, Web Workers.
