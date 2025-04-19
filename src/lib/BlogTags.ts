@@ -9,6 +9,8 @@ export const BlogTags = [
 
     "homelab",
     "programming",
+    "linux",
+    "random",
 ] as const;
 
 export type BlogTag = typeof BlogTags[number];
@@ -23,6 +25,8 @@ export function TagGroup<T>(): Record<BlogTag, T[]> {
         "ctf:pwn": [],
         "ctf:misc": [],
         homelab: [],
-        programming: []
+        programming: [],
+        linux: [],
+        random: [],
     };
 }
