@@ -2,7 +2,7 @@
 title: How to fix games on Linux launching on the wrong monitor (if XWayland)
 description: Games launching on the wrong monitor has been bothering me since forever...
 pubDate: '2025-04-19T08:32:09Z'
-cover: './header.png'
+cover: './header.png'w
 tags: [ 'linux', 'random' ]
 ---
 
@@ -142,4 +142,26 @@ You might also consider running the script in an empty environment to verify tha
 ```sh
 env -i bash
 ./script.sh
+```
+
+## Running at logon
+The only thing missing with udev rules is running the script the first time on logon.
+There are plenty of ways to do it, but why not a systemd user service?
+
+```ini
+[Unit]
+Description=Fix primary monitor when it comes back
+
+[Install]
+WantedBy=default.target
+
+[Service]
+ExecStart=%h/OneDrive/scripts/primary-monitor.sh
+Type=oneshot
+```
+
+Just gotta enable (and run) it!
+
+```sh
+systemctl --user enable --now primary-monitor.service
 ```
