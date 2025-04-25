@@ -2,7 +2,7 @@
 title: How to fix games on Linux launching on the wrong monitor (if XWayland)
 description: Games launching on the wrong monitor has been bothering me since forever...
 pubDate: '2025-04-19T08:32:09Z'
-cover: './header.png'w
+cover: './header.png'
 tags: [ 'linux', 'random' ]
 ---
 
